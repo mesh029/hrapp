@@ -1,0 +1,479 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Enums
+enum UserStatus {
+  active
+  suspended
+  deactivated
+}
+
+enum RoleStatus {
+  active
+  inactive
+}
+
+enum LocationStatus {
+  active
+  inactive
+}
+
+enum ScopeStatus {
+  active
+  inactive
+}
+
+enum DelegationStatus {
+  active
+  revoked
+  expired
+}
+
+enum WorkflowTemplateStatus {
+  active
+  deprecated
+}
+
+enum WorkflowStatus {
+  Draft
+  Submitted
+  UnderReview
+  Approved
+  Declined
+  Adjusted
+  Cancelled
+}
+
+enum WorkflowStepStatus {
+  pending
+  approved
+  declined
+  adjusted
+}
+
+enum ResourceType {
+  leave
+  timesheet
+}
+
+enum LeaveTypeStatus {
+  active
+  inactive
+}
+
+enum TimesheetStatus {
+  Draft
+  Submitted
+  UnderReview
+  Approved
+  Declined
+  Locked
+}
+
+// Core Models
+model User {
+  id                String       @id @default(uuid())
+  name              String
+  email             String       @unique
+  password_hash     String
+  status            UserStatus   @default(active)
+  primary_location_id String?
+  primary_location  Location?    @relation("UserPrimaryLocation", fields: [primary_location_id], references: [id])
+  deleted_at        DateTime?
+  created_at        DateTime     @default(now())
+  updated_at           DateTime     @updatedAt
+
+  // Relations
+  user_roles        UserRole[]
+  user_scopes       UserPermissionScope[]
+  delegations_as_delegator Delegation[] @relation("Delegator")
+  delegations_as_delegate Delegation[] @relation("Delegate")
+  workflow_instances_created WorkflowInstance[]
+  workflow_step_instances_acted WorkflowStepInstance[]
+  leave_requests    LeaveRequest[]
+  leave_balances    LeaveBalance[]
+  timesheets        Timesheet[]
+  audit_logs        AuditLog[]
+
+  @@index([status, deleted_at])
+  @@index([primary_location_id])
+  @@index([email])
+  @@map("users")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g., "leave.approve"
+  module      String
+  description String?
+  created_at  DateTime @default(now())
+
+  role_permissions RolePermission[]
+  user_scopes      UserPermissionScope[]
+  delegations      Delegation[]
+
+  @@index([module, name])
+  @@map("permissions")
+}
+
+model Role {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  status      RoleStatus @default(active)
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  role_permissions RolePermission[]
+  user_roles       UserRole[]
+
+  @@index([status])
+  @@map("roles")
+}
+
+model RolePermission {
+  role_id       String
+  permission_id String
+  created_at    DateTime   @default(now())
+
+  role       Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@id([role_id, permission_id])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  user_id    String
+  role_id    String
+  created_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, role_id])
+  @@index([user_id], where: { deleted_at: null })
+  @@index([role_id], where: { deleted_at: null })
+  @@map("user_roles")
+}
+
+model Location {
+  id        String         @id @default(uuid())
+  name      String
+  parent_id String?
+  parent    Location?       @relation("LocationTree", fields: [parent_id], references: [id])
+  children  Location[]      @relation("LocationTree")
+  status    LocationStatus @default(active)
+  path      String         // Materialized path: "1.2.3"
+  level     Int            @default(0)
+  created_at DateTime     @default(now())
+  updated_at DateTime      @updatedAt
+
+  // Relations
+  users_primary User[]      @relation("UserPrimaryLocation")
+  user_scopes  UserPermissionScope[]
+  delegations  Delegation[]
+  workflow_templates WorkflowTemplate[]
+  leave_requests LeaveRequest[]
+  timesheets     Timesheet[]
+  work_hours_configs WorkHoursConfig[]
+
+  @@index([parent_id])
+  @@index([status, parent_id])
+  @@index([path])
+  @@map("locations")
+}
+
+model UserPermissionScope {
+  id                 String      @id @default(uuid())
+  user_id            String
+  permission_id      String
+  location_id        String?
+  include_descendants Boolean    @default(false)
+  is_global          Boolean     @default(false)
+  valid_from         DateTime
+  valid_until        DateTime?
+  status             ScopeStatus @default(active)
+  created_at         DateTime    @default(now())
+
+  user       User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  location   Location?  @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, permission_id, status])
+  @@index([permission_id, status, valid_from, valid_until])
+  @@index([location_id, include_descendants], where: { location_id: { not: null } })
+  @@index([is_global, status], where: { is_global: true })
+  @@map("user_permission_scopes")
+}
+
+model Delegation {
+  id                 String           @id @default(uuid())
+  delegator_user_id  String
+  delegate_user_id   String
+  permission_id      String
+  location_id        String?
+  include_descendants Boolean         @default(false)
+  valid_from         DateTime
+  valid_until        DateTime
+  status             DelegationStatus @default(active)
+  revoked_at         DateTime?
+  created_at         DateTime         @default(now())
+
+  delegator  User       @relation("Delegator", fields: [delegator_user_id], references: [id], onDelete: Cascade)
+  delegate  User       @relation("Delegate", fields: [delegate_user_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  location  Location?  @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  @@index([delegate_user_id, permission_id, status])
+  @@index([status, valid_from, valid_until])
+  @@index([delegator_user_id])
+  @@map("delegations")
+}
+
+model WorkflowTemplate {
+  id           String                 @id @default(uuid())
+  name         String
+  resource_type ResourceType
+  location_id  String
+  version      Int                    @default(1)
+  status       WorkflowTemplateStatus @default(active)
+  created_at   DateTime               @default(now())
+
+  location Location           @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  steps    WorkflowStep[]
+  instances WorkflowInstance[]
+
+  @@index([resource_type, location_id, status])
+  @@index([id, version])
+  @@map("workflow_templates")
+}
+
+model WorkflowStep {
+  id                  String   @id @default(uuid())
+  workflow_template_id String
+  step_order          Int
+  required_permission String
+  allow_decline       Boolean  @default(true)
+  allow_adjust        Boolean  @default(false)
+  created_at          DateTime @default(now())
+
+  template WorkflowTemplate @relation(fields: [workflow_template_id], references: [id], onDelete: Cascade)
+
+  @@unique([workflow_template_id, step_order])
+  @@index([required_permission])
+  @@map("workflow_steps")
+}
+
+model WorkflowInstance {
+  id                String         @id @default(uuid())
+  workflow_template_id String
+  resource_id        String
+  resource_type      ResourceType
+  current_step_order Int            @default(0)
+  status             WorkflowStatus @default(Draft)
+  created_by         String
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+  locked_at          DateTime?
+
+  template WorkflowTemplate      @relation(fields: [workflow_template_id], references: [id], onDelete: Cascade)
+  creator  User                  @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  steps    WorkflowStepInstance[]
+
+  @@index([resource_type, resource_id])
+  @@index([status, current_step_order])
+  @@index([created_by])
+  @@index([id, locked_at])
+  @@map("workflow_instances")
+}
+
+model WorkflowStepInstance {
+  id                 String             @id @default(uuid())
+  workflow_instance_id String
+  step_order         Int
+  status             WorkflowStepStatus @default(pending)
+  acted_by           String?
+  delegated_from     String?
+  acted_at           DateTime?
+  comment            String?
+  digital_signature  String?            // JWT signature
+  signature_hash     String?
+  ip_address         String?
+  user_agent         String?
+  created_at         DateTime           @default(now())
+
+  workflow_instance WorkflowInstance @relation(fields: [workflow_instance_id], references: [id], onDelete: Cascade)
+  actor             User?             @relation(fields: [acted_by], references: [id])
+
+  @@unique([workflow_instance_id, step_order])
+  @@index([acted_by])
+  @@index([workflow_instance_id, status])
+  @@map("workflow_step_instances")
+}
+
+model LeaveType {
+  id              String          @id @default(uuid())
+  name            String          @unique
+  description     String?
+  is_paid         Boolean         @default(true)
+  max_days_per_year Int?
+  accrual_rule    String?        // JSON: { type: "monthly", days: 1.25 }
+  status          LeaveTypeStatus @default(active)
+  created_at      DateTime        @default(now())
+
+  leave_balances LeaveBalance[]
+  leave_requests LeaveRequest[]
+
+  @@index([status])
+  @@map("leave_types")
+}
+
+model LeaveBalance {
+  id          String   @id @default(uuid())
+  user_id     String
+  leave_type_id String
+  year        Int
+  allocated   Decimal  @db.Decimal(10, 2) @default(0)
+  used        Decimal  @db.Decimal(10, 2) @default(0)
+  pending     Decimal  @db.Decimal(10, 2) @default(0)
+  updated_at  DateTime @updatedAt
+
+  user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  leave_type LeaveType @relation(fields: [leave_type_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, leave_type_id, year])
+  @@index([year, leave_type_id])
+  @@map("leave_balances")
+}
+
+model LeaveRequest {
+  id                String         @id @default(uuid())
+  user_id           String
+  leave_type_id     String
+  start_date        DateTime       @db.Date
+  end_date          DateTime       @db.Date
+  days_requested    Decimal        @db.Decimal(10, 2)
+  reason            String?
+  status            WorkflowStatus @default(Draft)
+  workflow_instance_id String?
+  location_id       String
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+  deleted_at        DateTime?
+
+  user          User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  leave_type    LeaveType     @relation(fields: [leave_type_id], references: [id], onDelete: Cascade)
+  location      Location      @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, status, deleted_at])
+  @@index([start_date, end_date])
+  @@index([location_id])
+  @@index([workflow_instance_id])
+  @@index([status, deleted_at])
+  @@map("leave_requests")
+}
+
+model Timesheet {
+  id                String          @id @default(uuid())
+  user_id           String
+  period_start      DateTime        @db.Date
+  period_end        DateTime        @db.Date
+  status            TimesheetStatus @default(Draft)
+  workflow_instance_id String?
+  location_id       String
+  total_hours       Decimal         @db.Decimal(10, 2) @default(0)
+  is_locked         Boolean         @default(false)
+  locked_at         DateTime?
+  created_at        DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+  deleted_at        DateTime?
+
+  user    User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  location Location       @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  entries TimesheetEntry[]
+
+  @@index([user_id, period_start, period_end])
+  @@index([period_start, period_end, status])
+  @@index([location_id])
+  @@index([is_locked, locked_at])
+  @@index([workflow_instance_id])
+  @@map("timesheets")
+}
+
+model TimesheetEntry {
+  id          String   @id @default(uuid())
+  timesheet_id String
+  date        DateTime @db.Date
+  hours       Decimal  @db.Decimal(10, 2)
+  description String?
+  entry_type  String?  // "work", "leave", "holiday"
+  leave_request_id String?
+  created_at DateTime @default(now())
+
+  timesheet Timesheet @relation(fields: [timesheet_id], references: [id], onDelete: Cascade)
+
+  @@index([timesheet_id])
+  @@index([timesheet_id, date])
+  @@map("timesheet_entries")
+}
+
+model TimesheetPeriod {
+  id          String    @id @default(uuid())
+  period_start DateTime @db.Date
+  period_end   DateTime @db.Date
+  is_locked   Boolean   @default(false)
+  locked_at   DateTime?
+  locked_by   String?
+  created_at  DateTime  @default(now())
+
+  @@index([period_start, period_end])
+  @@index([is_locked, locked_at])
+  @@map("timesheet_periods")
+}
+
+model WorkHoursConfig {
+  id          String   @id @default(uuid())
+  location_id String?
+  staff_type  String?  // "Regular", "Temporary", "HRH"
+  day_of_week Int      // 0=Sunday, 1=Monday, ..., 6=Saturday
+  hours       Decimal  @db.Decimal(10, 2)
+  is_active   Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  location Location? @relation(fields: [location_id], references: [id], onDelete: Cascade)
+
+  @@index([location_id, staff_type, day_of_week])
+  @@index([staff_type, day_of_week])
+  @@map("work_hours_configs")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actor_id     String
+  action       String
+  resource_type String
+  resource_id  String
+  before_state Json?
+  after_state  Json?
+  metadata     Json?
+  ip_address   String?
+  timestamp    DateTime @default(now())
+
+  actor User @relation(fields: [actor_id], references: [id], onDelete: Cascade)
+
+  @@index([actor_id])
+  @@index([resource_type, resource_id])
+  @@index([action])
+  @@index([timestamp])
+  @@index([resource_type, resource_id, timestamp])
+  @@map("audit_logs")
+}

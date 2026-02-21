@@ -8,13 +8,425 @@
 
 ## TABLE OF CONTENTS
 
-1. [Project Setup & Structure](#project-setup--structure)
-2. [Docker Configuration](#docker-configuration)
-3. [Database Setup & Migrations](#database-setup--migrations)
-4. [Core Business Logic Implementation](#core-business-logic-implementation)
-5. [API Endpoint Implementation](#api-endpoint-implementation)
-6. [Testing Strategy](#testing-strategy)
-7. [Deployment Guide](#deployment-guide)
+1. [Phased Implementation Plan](#phased-implementation-plan) ⭐ **START HERE**
+2. [Project Setup & Structure](#project-setup--structure)
+3. [Docker Configuration](#docker-configuration)
+4. [Database Setup & Migrations](#database-setup--migrations)
+5. [Core Business Logic Implementation](#core-business-logic-implementation)
+6. [API Endpoint Implementation](#api-endpoint-implementation)
+7. [Testing Strategy](#testing-strategy)
+8. [Deployment Guide](#deployment-guide)
+
+---
+
+## 🧭 QUICK REFERENCE
+
+**Before starting any phase, check:** `SYSTEM_COMPASS.md` - Your implementation compass with critical principles, dynamic elements, and enforcement rules.
+
+---
+
+---
+
+## PHASED IMPLEMENTATION PLAN
+
+**Purpose:** Strategic implementation guide serving as a rulebook for building the PATH HR System API. Reference this document for direction and flow.
+
+**Core Principles:**
+- ✅ **Build Incrementally:** Complete and test each phase before proceeding
+- ✅ **Dynamic First:** All configurations must be database-driven, zero hardcoded logic
+- ✅ **Test Continuously:** Verify functionality after each implementation
+- ✅ **Document As You Go:** Keep API documentation updated
+
+---
+
+### Phase 0: Foundation & Infrastructure
+
+**Goal:** Establish development environment and project foundation
+
+**Flow:**
+1. Initialize Next.js project with TypeScript
+2. Install core dependencies (Prisma, Redis, JWT, bcrypt, zod)
+3. Set up Docker environment (PostgreSQL + Redis containers)
+4. Initialize Prisma and configure database connection
+5. Establish project structure (services, middleware, API routes)
+6. Configure TypeScript paths and development tools
+
+**Key Decisions:**
+- Use Next.js API Routes (not Server Actions) for explicit control
+- Prisma for database ORM with PostgreSQL
+- Redis for caching and session management
+- JWT for authentication (access + refresh tokens)
+
+**Validation:**
+- Database connection successful
+- Redis connection successful
+- Project structure established
+- TypeScript compilation works
+
+---
+
+### Phase 1: Database Schema & Authentication
+
+**Goal:** Establish data foundation and secure access layer
+
+**Flow:**
+1. Design Prisma schema for core entities (users, roles, permissions, locations, staff_types)
+2. Implement database connection service (singleton pattern)
+3. Implement Redis connection service (with reconnection handling)
+4. Build authentication middleware (JWT verification, user validation)
+5. Create auth endpoints (login, refresh, logout)
+6. Develop seed script (admin user, default roles/permissions, PATH locations)
+
+**Critical Schema Decisions:**
+- Use UUIDs for all primary keys
+- Implement soft deletes (deleted_at timestamps)
+- Add indexes on foreign keys and frequently queried fields
+- Use hierarchical path pattern for locations (materialized path)
+- Store password hashes (bcrypt) not plaintext
+
+**Authentication Strategy:**
+- Access tokens (short-lived, 15-30 min)
+- Refresh tokens (long-lived, 7 days, stored in Redis)
+- Token invalidation on logout
+- User status validation (active/inactive)
+
+**Validation:**
+- Login returns valid JWT tokens
+- Protected routes require valid token
+- Token refresh works correctly
+- Seed data creates usable admin account
+
+---
+
+### Phase 2: Core Entity Management
+
+**Goal:** Build foundation for users, roles, permissions, and locations
+
+**Flow:**
+1. Implement permission middleware (check user permissions + location scope)
+2. Build user management endpoints (CRUD + role assignment + scope management)
+3. Build role management endpoints (CRUD + permission assignment)
+4. Build permission endpoints (read-only, permissions are predefined)
+5. Build location management endpoints (CRUD + tree operations)
+6. Create location service (tree building, hierarchy validation, path resolution)
+
+**Permission Model:**
+- Permissions are atomic actions (e.g., `leave.approve`, `users.create`)
+- Roles are collections of permissions
+- Users can have multiple roles (union of permissions)
+- User scopes define location boundaries for permissions
+- Permission checks: User has permission + permission scope includes location
+
+**Location Hierarchy:**
+- Materialized path pattern for efficient queries
+- Support for moving locations in tree
+- Ancestor/descendant queries for scope resolution
+- Validate tree integrity on create/update/move
+
+**Key Endpoints:**
+- Users: CRUD, role assignment, scope management
+- Roles: CRUD, permission assignment
+- Permissions: List and read (no create/update - predefined)
+- Locations: CRUD, tree operations, hierarchy queries
+
+**Validation:**
+- Can create user and assign roles
+- Permission checks enforce location scope
+- Location tree operations work correctly
+- All endpoints respect permission requirements
+
+---
+
+### Phase 3: Dynamic Configuration
+
+**Goal:** Enable runtime configuration of staff types, leave types, and work hours
+
+**Flow:**
+1. Extend Prisma schema (staff_types, leave_types, work_hours_configurations tables)
+2. Build staff type management endpoints (CRUD operations)
+3. Build leave type management endpoints (CRUD with parameters: is_paid, accrual_rate, max_balance)
+4. Build work hours configuration endpoints (support per staff type and per location)
+5. Create work hours calculation service
+6. Create leave type validation service
+
+**Key Design Decisions:**
+- Staff types are fully dynamic (can create any type at runtime)
+- Leave types support configurable parameters (paid/unpaid, accrual rates, max balances)
+- Work hours can be configured per staff type OR per location (priority: location > staff type)
+- All configurations stored in database, zero hardcoded values
+
+**Validation:**
+- Can create/modify/delete all configuration types
+- Work hours calculation uses correct configuration
+- Leave type parameters enforced correctly
+- No hardcoded business rules
+
+---
+
+### Phase 4: Workflow Engine
+
+**Goal:** Build fully dynamic workflow system with zero hardcoded sequences
+
+**Flow:**
+1. Extend Prisma schema (workflow_templates, workflow_template_steps, workflow_instances, workflow_approvals)
+2. Build authority resolution service (multi-layer: Permission ∩ Location Scope ∩ Delegation ∩ Workflow Step)
+3. Build workflow template management endpoints (CRUD + step management + reordering)
+4. Build workflow execution service (instance creation, approver resolution, state transitions)
+5. Build workflow instance endpoints (approve, decline, adjust with routing options)
+6. Implement digital signature generation (JWT-based with timestamps, IP, user agent)
+7. Create seed data for default templates (examples only, fully modifiable)
+
+**Critical Requirements:**
+- **NO hardcoded workflows** - All sequences must be database-driven
+- **NO fixed starting points** - First step can be any role/permission
+- **Complete flexibility** - Add/remove/reorder steps at runtime
+- **Version isolation** - Template changes don't affect running instances
+- **Dynamic approver resolution** - Based on permissions, roles, and location scope
+
+**Workflow State Model:**
+- Draft → Submitted → Under Review → Approved | Declined | Adjusted | Cancelled
+- Adjust can route back to any step or to employee
+- Each approval generates digital signature with timestamp
+
+**Validation:**
+- Can create template with any roles in any order
+- Can modify/delete any step including first step
+- Approvers resolved dynamically (not hardcoded)
+- Digital signatures generated for all approvals
+- State transitions follow defined model
+
+---
+
+### Phase 5: Leave Management
+
+**Goal:** Implement leave request system integrated with workflow engine
+
+**Flow:**
+1. Extend Prisma schema (leave_requests, leave_balances, leave_balance_transactions)
+2. Build leave balance service (calculation, accrual logic, balance updates)
+3. Build leave request endpoints (CRUD, submit for approval)
+4. Build leave balance endpoints (view, manual adjustments)
+5. Integrate with workflow engine (create instance on submit, update balance on approval)
+6. Implement balance calculation logic (accrual rates, max limits, used vs. available)
+
+**Integration Points:**
+- Submit creates workflow instance using location-specific template
+- Each approval step validates balance availability
+- Final approval updates leave balance and marks request approved
+- Approved requests trigger timesheet integration (Phase 6)
+
+**Balance Logic:**
+- Calculate based on leave type accrual rate
+- Enforce max balance limits per leave type
+- Track transaction history for audit
+- Support manual adjustments (admin only)
+
+**Validation:**
+- Leave requests follow workflow correctly
+- Balance calculations accurate
+- Balance updates on approval
+- Integration with workflow engine works
+
+---
+
+### Phase 6: Timesheet Management
+
+**Goal:** Build timesheet system with leave integration and PDF generation
+
+**Flow:**
+1. Extend Prisma schema (timesheet_periods, timesheets, timesheet_entries)
+2. Build timesheet period service (period creation, locking/unlocking)
+3. Build timesheet period endpoints (CRUD, lock/unlock operations)
+4. Build timesheet endpoints (CRUD, entry management, submit, download PDF)
+5. Implement leave-to-timesheet integration (auto-add approved leaves)
+6. Build timesheet calculation service (total hours, validation, PDF generation)
+7. Integrate with workflow engine (create instance on submit, signatures on approval)
+
+**Leave Integration Logic:**
+- When leave request approved, automatically create timesheet entry
+- Entry labeled with leave type name
+- Hours calculated from work hours configuration
+- Entry linked to leave request for traceability
+
+**Timesheet Calculation:**
+- Sum all entries (work + leave + holidays)
+- Validate against work hours configuration
+- Calculate expected vs. actual hours
+- Generate PDF with all entries and approval signatures
+
+**Period Management:**
+- Monthly periods created automatically or manually
+- Locked periods prevent further edits
+- Unlock requires admin permission
+
+**Validation:**
+- Approved leaves appear in timesheets automatically
+- Total hours calculated correctly
+- PDF includes all signatures
+- Period locking prevents unauthorized edits
+
+---
+
+### Phase 7: Delegation System
+
+**Goal:** Enable temporary authority transfer for unavailable approvers
+
+**Flow:**
+1. Extend Prisma schema (delegations table)
+2. Build delegation service (validation, time checks, scope validation)
+3. Build delegation endpoints (CRUD, revoke operations)
+4. Update authority resolution service to include delegation checks
+5. Implement admin delegation (system admin can delegate on behalf of users)
+
+**Delegation Model:**
+- Time-bound (valid_from, valid_until)
+- Permission-specific (e.g., leave.approve, timesheet.approve)
+- Location-scoped (can include descendants)
+- Status tracking (active, revoked, expired)
+- Self-delegation or admin delegation
+
+**Authority Integration:**
+- Delegations act as temporary overlays on permissions
+- Authority check: Direct Permission OR Active Delegation
+- Delegation must be valid (time, scope, status)
+- Delegated approvals logged with delegation context
+
+**Validation:**
+- Delegation grants temporary authority correctly
+- Delegation expires automatically after valid_until
+- Scope validation works (location hierarchy)
+- Authority resolution includes delegations
+
+---
+
+### Phase 8: Notifications & Audit
+
+**Goal:** Implement notification system and comprehensive audit logging
+
+**Flow:**
+1. Extend Prisma schema (notifications, audit_logs tables)
+2. Build notification service (create, send email, mark as read)
+3. Build notification endpoints (list, read, delete operations)
+4. Build audit log service (log all state changes, support filtering)
+5. Build audit log endpoints (list with filters, view details)
+6. Integrate notifications into workflow events
+7. Integrate audit logging into all state-changing operations
+
+**Notification Triggers:**
+- Workflow step assignment (notify approver)
+- Approval/decline actions (notify requester and next approver)
+- Leave/timesheet approval (notify all stakeholders)
+- Critical system events (email notifications)
+
+**Audit Logging Requirements:**
+- Log all workflow actions (approve, decline, adjust)
+- Log all leave/timesheet state changes
+- Log all user/role/permission changes
+- Log all configuration changes
+- Support filtering by user, action, resource, date range
+
+**Validation:**
+- Notifications created for all relevant events
+- Email notifications sent (if SMTP configured)
+- Audit logs capture all state changes
+- Audit trail is complete and searchable
+
+---
+
+### Phase 9: Reporting & Dashboards
+
+**Goal:** Build reporting and analytics system for insights
+
+**Flow:**
+1. Build reporting service (calculations, aggregations, filtering)
+2. Build reporting endpoints (leave utilization, balance reports, timesheet summaries)
+3. Build dashboard data aggregation (by location, staff type, time period)
+4. Implement caching strategy (Redis for dashboard data)
+5. Build export functionality (CSV, PDF exports)
+
+**Report Types:**
+- Leave utilization (by location, staff type, time period)
+- Leave balance summaries
+- Timesheet summaries and statistics
+- Pending approvals dashboard
+- Regional dashboard data (aggregated metrics)
+
+**Performance Considerations:**
+- Cache dashboard data in Redis (TTL-based)
+- Use database aggregations for calculations
+- Support pagination for large datasets
+- Optimize queries with proper indexes
+
+**Validation:**
+- Reports return accurate data
+- Dashboard aggregations correct
+- Export functionality works
+- Caching improves performance
+
+---
+
+### Phase 10: Testing, Optimization & Documentation
+
+**Goal:** Ensure system quality, performance, and maintainability
+
+**Flow:**
+1. Write integration tests (complete workflows, edge cases, error scenarios)
+2. Performance optimization (database indexes, query optimization, Redis caching)
+3. Error handling standardization (consistent error responses, proper codes)
+4. API documentation (endpoints, examples, error codes)
+5. Security review (auth/authorization, input validation, XSS prevention)
+6. Load testing (concurrent requests, performance bottlenecks)
+7. Final validation checklist
+
+**Testing Strategy:**
+- Integration tests for complete workflows
+- Test leave → approval → timesheet flow end-to-end
+- Test delegation scenarios
+- Test error handling and edge cases
+- Test all dynamic configuration scenarios
+
+**Optimization Areas:**
+- Database indexes on foreign keys and frequently queried fields
+- Prisma select to limit data fetched
+- Redis caching for permissions, dashboard data
+- Connection pooling for database
+- Query optimization (avoid N+1 queries)
+
+**Documentation Requirements:**
+- All endpoints documented with request/response examples
+- Error codes and meanings documented
+- Postman collection for easy testing
+- Architecture decisions documented
+
+**Final Validation:**
+- All endpoints functional
+- Zero hardcoded workflows or business logic
+- All configurations database-driven
+- Digital signatures working
+- Notifications and audit logs complete
+- Performance acceptable
+- Security reviewed
+
+---
+
+## Implementation Summary
+
+**Phase Sequence:**
+0. Foundation → 1. Auth & Schema → 2. Core Entities → 3. Dynamic Config → 4. Workflow Engine → 5. Leave Management → 6. Timesheet Management → 7. Delegation → 8. Notifications & Audit → 9. Reporting → 10. Testing & Optimization
+
+**Critical Success Factors:**
+1. ✅ **No Hardcoded Workflows** - All workflows must be database-driven, zero assumptions about sequences
+2. ✅ **Dynamic Configuration** - All configs must be changeable at runtime (staff types, leave types, work hours, workflows)
+3. ✅ **Test Continuously** - Validate functionality after each phase before proceeding
+4. ✅ **Document As You Go** - Keep API documentation updated during development
+5. ✅ **Incremental Development** - Build and test incrementally, don't skip phases
+
+**Key Architectural Principles:**
+- **Authority Formula:** Permission ∩ Location Scope ∩ Delegation ∩ Workflow Step Eligibility ∩ Active Status
+- **Workflow Flexibility:** Any role can be first step, any number of steps, fully configurable
+- **Version Isolation:** Template changes don't affect running workflow instances
+- **Audit Trail:** All state changes must be logged
+- **Soft Deletes:** Never hard delete core entities (users, locations, permissions)
 
 ---
 
