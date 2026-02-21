@@ -221,7 +221,110 @@ async function main() {
 
   console.log(`✅ Created ${createdLocations.length} locations`);
 
-  // 4. Create Admin User
+  // 4. Create Staff Types
+  console.log('👥 Creating staff types...');
+  const staffTypes = [
+    { code: 'regular', name: 'Regular Staff', description: 'Regular full-time staff' },
+    { code: 'temporary', name: 'Temporary Staff', description: 'Temporary staff' },
+    { code: 'hrh', name: 'HRH Staff', description: 'Human Resources for Health staff' },
+  ];
+
+  const createdStaffTypes = [];
+  for (const stData of staffTypes) {
+    const staffType = await prisma.staffType.upsert({
+      where: { code: stData.code },
+      update: {},
+      create: stData,
+    });
+    createdStaffTypes.push(staffType);
+  }
+  console.log(`✅ Created ${createdStaffTypes.length} staff types`);
+
+  // 4b. Create Work Hours Configs for Staff Types
+  console.log('⏰ Creating work hours configs...');
+  const hrhStaffType = createdStaffTypes.find((st) => st.code === 'hrh');
+  const regularStaffType = createdStaffTypes.find((st) => st.code === 'regular');
+  const tempStaffType = createdStaffTypes.find((st) => st.code === 'temporary');
+
+  if (hrhStaffType) {
+    // HRH: Mon-Fri 8 hours/day
+    const hrhDays = [
+      { day: 1, hours: 8 }, // Monday
+      { day: 2, hours: 8 }, // Tuesday
+      { day: 3, hours: 8 }, // Wednesday
+      { day: 4, hours: 8 }, // Thursday
+      { day: 5, hours: 8 }, // Friday
+    ];
+    for (const dayConfig of hrhDays) {
+      const existing = await prisma.workHoursConfig.findFirst({
+        where: {
+          staff_type_id: hrhStaffType.id,
+          location_id: null,
+          day_of_week: dayConfig.day,
+        },
+      });
+
+      if (existing) {
+        await prisma.workHoursConfig.update({
+          where: { id: existing.id },
+          data: { hours: dayConfig.hours, is_active: true },
+        });
+      } else {
+        await prisma.workHoursConfig.create({
+          data: {
+            staff_type_id: hrhStaffType.id,
+            location_id: null,
+            day_of_week: dayConfig.day,
+            hours: dayConfig.hours,
+            is_active: true,
+          },
+        });
+      }
+    }
+    console.log('   ✅ HRH: Mon-Fri 8 hours/day');
+  }
+
+  if (regularStaffType && tempStaffType) {
+    // Regular/Temporary: Mon-Thu 8.5 hours, Fri 6 hours
+    const regularDays = [
+      { day: 1, hours: 8.5 }, // Monday
+      { day: 2, hours: 8.5 }, // Tuesday
+      { day: 3, hours: 8.5 }, // Wednesday
+      { day: 4, hours: 8.5 }, // Thursday
+      { day: 5, hours: 6 }, // Friday
+    ];
+    for (const staffType of [regularStaffType, tempStaffType]) {
+      for (const dayConfig of regularDays) {
+        const existing = await prisma.workHoursConfig.findFirst({
+          where: {
+            staff_type_id: staffType.id,
+            location_id: null,
+            day_of_week: dayConfig.day,
+          },
+        });
+
+        if (existing) {
+          await prisma.workHoursConfig.update({
+            where: { id: existing.id },
+            data: { hours: dayConfig.hours, is_active: true },
+          });
+        } else {
+          await prisma.workHoursConfig.create({
+            data: {
+              staff_type_id: staffType.id,
+              location_id: null,
+              day_of_week: dayConfig.day,
+              hours: dayConfig.hours,
+              is_active: true,
+            },
+          });
+        }
+      }
+    }
+    console.log('   ✅ Regular/Temporary: Mon-Thu 8.5 hours, Fri 6 hours');
+  }
+
+  // 5. Create Admin User
   console.log('👤 Creating admin user...');
   const adminPassword = 'oneeyedragon';
   const hashedPassword = await hashPassword(adminPassword);
@@ -259,11 +362,173 @@ async function main() {
   console.log('✅ Created admin user: admin@path.org');
   console.log('   Password: oneeyedragon');
 
+  // 6. Create default leave types
+  console.log('\n🏖️  Creating default leave types...');
+  const leaveTypes = [
+    { name: 'Annual Leave', description: 'Paid annual vacation leave', is_paid: true, max_days_per_year: 21 },
+    { name: 'Sick Leave', description: 'Paid sick leave', is_paid: true, max_days_per_year: 10 },
+    { name: 'Emergency Leave', description: 'Unpaid emergency leave', is_paid: false, max_days_per_year: null },
+    { name: 'Maternity Leave', description: 'Paid maternity leave', is_paid: true, max_days_per_year: 90 },
+    { name: 'Paternity Leave', description: 'Paid paternity leave', is_paid: true, max_days_per_year: 14 },
+  ];
+
+  const createdLeaveTypes = [];
+  for (const ltData of leaveTypes) {
+    const leaveType = await prisma.leaveType.upsert({
+      where: { name: ltData.name },
+      update: {},
+      create: ltData,
+    });
+    createdLeaveTypes.push(leaveType);
+  }
+  console.log(`✅ Created ${createdLeaveTypes.length} leave types`);
+
+  // 7. Create default leave accrual configs (1.75 days/month default)
+  console.log('\n📊 Creating default leave accrual configs...');
+  const accrualConfigs = [];
+  
+  // Default accrual config for Annual Leave (1.75 days/month for all)
+  for (const leaveType of createdLeaveTypes) {
+    if (leaveType.name === 'Annual Leave') {
+      // System default (location=null, staff_type=null)
+      // Check if exists first (can't use upsert with null in unique constraint)
+      const existing = await prisma.leaveAccrualConfig.findFirst({
+        where: {
+          leave_type_id: leaveType.id,
+          location_id: null,
+          staff_type_id: null,
+          deleted_at: null,
+        },
+      });
+
+      if (!existing) {
+        const defaultConfig = await prisma.leaveAccrualConfig.create({
+          data: {
+            leave_type_id: leaveType.id,
+            location_id: null,
+            staff_type_id: null,
+            accrual_rate: 1.75, // 1.75 days per month
+            accrual_period: 'monthly',
+            is_active: true,
+          },
+        });
+        accrualConfigs.push(defaultConfig);
+      } else {
+        accrualConfigs.push(existing);
+      }
+    }
+  }
+  console.log(`✅ Created ${accrualConfigs.length} default accrual configs`);
+  console.log('   Default: 1.75 days/month for Annual Leave (system-wide)');
+
+  // 8. Create default workflow templates for each location
+  console.log('\n📋 Creating default workflow templates...');
+  const workflowTemplates = [];
+
+  // Get leave.approve permission
+  const leaveApprovePermission = await prisma.permission.findUnique({
+    where: { name: 'leave.approve' },
+  });
+
+  const timesheetApprovePermission = await prisma.permission.findUnique({
+    where: { name: 'timesheet.approve' },
+  });
+
+  if (leaveApprovePermission && timesheetApprovePermission) {
+    // Create workflow templates for each location
+    for (const location of createdLocations) {
+      // Leave Request Workflow (3-step: Manager → Program Officer → HR Manager)
+      const leaveTemplate = await prisma.workflowTemplate.create({
+        data: {
+          name: `${location.name} - Leave Request Approval`,
+          resource_type: 'leave',
+          location_id: location.id,
+          version: 1,
+          status: 'active',
+          steps: {
+            create: [
+              {
+                step_order: 1,
+                required_permission: 'leave.approve',
+                allow_decline: true,
+                allow_adjust: true,
+              },
+              {
+                step_order: 2,
+                required_permission: 'leave.approve',
+                allow_decline: true,
+                allow_adjust: false,
+              },
+              {
+                step_order: 3,
+                required_permission: 'leave.approve',
+                allow_decline: true,
+                allow_adjust: false,
+              },
+            ],
+          },
+        },
+        include: {
+          steps: true,
+        },
+      });
+      workflowTemplates.push(leaveTemplate);
+
+      // Timesheet Approval Workflow (2-step: Manager → HR Manager)
+      const timesheetTemplate = await prisma.workflowTemplate.create({
+        data: {
+          name: `${location.name} - Timesheet Approval`,
+          resource_type: 'timesheet',
+          location_id: location.id,
+          version: 1,
+          status: 'active',
+          steps: {
+            create: [
+              {
+                step_order: 1,
+                required_permission: 'timesheet.approve',
+                allow_decline: true,
+                allow_adjust: true,
+              },
+              {
+                step_order: 2,
+                required_permission: 'timesheet.approve',
+                allow_decline: true,
+                allow_adjust: false,
+              },
+            ],
+          },
+        },
+        include: {
+          steps: true,
+        },
+      });
+      workflowTemplates.push(timesheetTemplate);
+    }
+
+    console.log(`✅ Created ${workflowTemplates.length} workflow templates`);
+    console.log('   Note: These are example templates and can be modified or deleted');
+  }
+
+  // 9. Seed Kenya holidays
+  console.log('\n🇰🇪 Seeding Kenya national holidays...');
+  const { seedKenyaHolidays } = await import('../app/lib/services/country-holidays');
+  const seededHolidays = await seedKenyaHolidays();
+  console.log(`✅ Seeded ${seededHolidays.length} Kenya holidays`);
+  if (seededHolidays.length > 0) {
+    console.log(`   Holidays: ${seededHolidays.slice(0, 5).join(', ')}${seededHolidays.length > 5 ? '...' : ''}`);
+  }
+
   console.log('\n🎉 Seed completed successfully!');
   console.log('\n📋 Summary:');
   console.log(`   - ${createdPermissions.length} permissions created`);
   console.log(`   - ${createdRoles.length} roles created`);
   console.log(`   - ${createdLocations.length} locations created`);
+  console.log(`   - ${createdStaffTypes.length} staff types created`);
+  console.log(`   - ${createdLeaveTypes.length} leave types created`);
+  console.log(`   - ${accrualConfigs.length} accrual configs created`);
+  console.log(`   - ${workflowTemplates.length} workflow templates created`);
+  console.log(`   - ${seededHolidays.length} Kenya holidays seeded`);
   console.log('   - 1 admin user created (admin@path.org)');
 }
 

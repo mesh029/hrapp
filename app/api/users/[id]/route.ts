@@ -13,6 +13,7 @@ const updateUserSchema = z.object({
   password: z.string().min(8).optional(),
   status: z.enum(['active', 'suspended', 'deactivated']).optional(),
   primary_location_id: z.string().uuid().nullable().optional(),
+  manager_id: z.string().uuid().nullable().optional(), // Optional manager assignment
 });
 
 /**
@@ -59,6 +60,14 @@ export async function GET(
           select: {
             id: true,
             name: true,
+          },
+        },
+        manager_id: true,
+        manager: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
           },
         },
         created_at: true,
@@ -149,6 +158,35 @@ export async function PATCH(
       }
     }
 
+    // Validate manager if provided
+    if (validation.data.manager_id !== undefined) {
+      if (validation.data.manager_id === null) {
+        // Allow removing manager
+        updateData.manager_id = null;
+      } else {
+        // Validate manager exists and is active
+        const manager = await prisma.user.findUnique({
+          where: { id: validation.data.manager_id },
+        });
+
+        if (!manager || manager.deleted_at || manager.status !== 'active') {
+          return errorResponse('Invalid or inactive manager', 400);
+        }
+
+        // Prevent circular manager relationships
+        if (validation.data.manager_id === params.id) {
+          return errorResponse('User cannot be their own manager', 400);
+        }
+
+        // Prevent creating manager loops (manager cannot have this user as their manager)
+        if (manager.manager_id === params.id) {
+          return errorResponse('Cannot create circular manager relationship', 400);
+        }
+
+        updateData.manager_id = validation.data.manager_id;
+      }
+    }
+
     // Prepare update data
     const updateData: any = {};
     if (validation.data.name) updateData.name = validation.data.name;
@@ -170,6 +208,14 @@ export async function PATCH(
         email: true,
         status: true,
         primary_location_id: true,
+        manager_id: true,
+        manager: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         updated_at: true,
       },
     });

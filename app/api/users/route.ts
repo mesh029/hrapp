@@ -11,6 +11,7 @@ const createUserSchema = z.object({
   email: z.string().email('Invalid email format'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   primary_location_id: z.string().uuid().optional(),
+  manager_id: z.string().uuid().optional().nullable(), // Optional manager assignment
   status: z.enum(['active', 'suspended', 'deactivated']).optional().default('active'),
 });
 
@@ -73,10 +74,18 @@ export async function GET(request: NextRequest) {
           email: true,
           status: true,
           primary_location_id: true,
+          manager_id: true,
           primary_location: {
             select: {
               id: true,
               name: true,
+            },
+          },
+          manager: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
             },
           },
           created_at: true,
@@ -132,7 +141,7 @@ export async function POST(request: NextRequest) {
       return errorResponse('Validation failed', 400, validationResult.error.flatten().fieldErrors);
     }
 
-    const { name, email, password, primary_location_id, status } = validationResult.data;
+    const { name, email, password, primary_location_id, manager_id, status } = validationResult.data;
 
     // Check if email already exists
     const existing = await prisma.user.findUnique({
@@ -141,6 +150,22 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       return errorResponse('User with this email already exists', 409);
+    }
+
+    // Validate manager if provided
+    if (manager_id) {
+      const manager = await prisma.user.findUnique({
+        where: { id: manager_id },
+      });
+
+      if (!manager || manager.deleted_at || manager.status !== 'active') {
+        return errorResponse('Invalid or inactive manager', 400);
+      }
+
+      // Prevent circular manager relationships (manager cannot be the user themselves)
+      if (manager_id === user.id) {
+        return errorResponse('User cannot be their own manager', 400);
+      }
     }
 
     // Hash password
@@ -154,6 +179,7 @@ export async function POST(request: NextRequest) {
         password_hash,
         status,
         primary_location_id: primary_location_id || null,
+        manager_id: manager_id || null,
       },
       select: {
         id: true,
@@ -161,6 +187,14 @@ export async function POST(request: NextRequest) {
         email: true,
         status: true,
         primary_location_id: true,
+        manager_id: true,
+        manager: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         created_at: true,
       },
     });

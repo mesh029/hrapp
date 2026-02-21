@@ -1,0 +1,210 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { authenticate } from '@/lib/middleware/auth';
+import { requirePermission } from '@/lib/middleware/permissions';
+import { prisma } from '@/lib/db';
+import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse } from '@/lib/utils/responses';
+import { updateWorkflowStepSchema, uuidSchema } from '@/lib/utils/validation';
+
+/**
+ * PATCH /api/workflows/templates/[id]/steps/[stepId]
+ * Update a workflow step
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string; stepId: string } }
+) {
+  try {
+    const user = await authenticate(request);
+
+    // Check permission
+    const userWithLocation = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    try {
+      await requirePermission(user, 'workflows.templates.update', { locationId });
+    } catch {
+      const hasSystemAdmin = await prisma.userRole.findFirst({
+        where: {
+          user_id: user.id,
+          deleted_at: null,
+          role: {
+            status: 'active',
+            role_permissions: {
+              some: {
+                permission: {
+                  name: 'system.admin',
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!hasSystemAdmin) {
+        return unauthorizedResponse('You do not have permission to update workflow templates');
+      }
+    }
+
+    // Validate UUIDs
+    const templateValidation = uuidSchema.safeParse(params.id);
+    const stepValidation = uuidSchema.safeParse(params.stepId);
+    
+    if (!templateValidation.success || !stepValidation.success) {
+      return errorResponse('Invalid workflow template ID or step ID', 400);
+    }
+
+    const body = await request.json();
+    const validation = updateWorkflowStepSchema.safeParse(body);
+    if (!validation.success) {
+      return errorResponse('Validation failed', 400, validation.error.flatten().fieldErrors);
+    }
+
+    // Check if step exists and belongs to template
+    const step = await prisma.workflowStep.findUnique({
+      where: { id: params.stepId },
+    });
+
+    if (!step || step.workflow_template_id !== params.id) {
+      return notFoundResponse('Workflow step not found');
+    }
+
+    // If updating step_order, check for conflicts
+    if (validation.data.step_order !== undefined && validation.data.step_order !== step.step_order) {
+      const template = await prisma.workflowTemplate.findUnique({
+        where: { id: params.id },
+        include: {
+          steps: true,
+        },
+      });
+
+      const existingStep = template?.steps.find((s) => s.step_order === validation.data.step_order && s.id !== params.stepId);
+      if (existingStep) {
+        return errorResponse(`Step order ${validation.data.step_order} already exists`, 409);
+      }
+    }
+
+    // Validate permission if provided
+    if (validation.data.required_permission) {
+      const permission = await prisma.permission.findUnique({
+        where: { name: validation.data.required_permission },
+      });
+
+      if (!permission) {
+        return errorResponse(`Permission not found: ${validation.data.required_permission}`, 400);
+      }
+    }
+
+    // Update step
+    const updatedStep = await prisma.workflowStep.update({
+      where: { id: params.stepId },
+      data: {
+        ...(validation.data.step_order !== undefined && { step_order: validation.data.step_order }),
+        ...(validation.data.required_permission && { required_permission: validation.data.required_permission }),
+        ...(validation.data.allow_decline !== undefined && { allow_decline: validation.data.allow_decline }),
+        ...(validation.data.allow_adjust !== undefined && { allow_adjust: validation.data.allow_adjust }),
+      },
+    });
+
+    return successResponse(updatedStep);
+  } catch (error: any) {
+    console.error('Update workflow step error:', error);
+    if (error.message.includes('Unauthorized')) {
+      return unauthorizedResponse(error.message);
+    }
+    if (error.code === 'P2002') {
+      return errorResponse('Step order already exists for this template', 409);
+    }
+    return errorResponse(error.message || 'Internal server error', 500);
+  }
+}
+
+/**
+ * DELETE /api/workflows/templates/[id]/steps/[stepId]
+ * Remove a workflow step
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string; stepId: string } }
+) {
+  try {
+    const user = await authenticate(request);
+
+    // Check permission
+    const userWithLocation = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    try {
+      await requirePermission(user, 'workflows.templates.update', { locationId });
+    } catch {
+      const hasSystemAdmin = await prisma.userRole.findFirst({
+        where: {
+          user_id: user.id,
+          deleted_at: null,
+          role: {
+            status: 'active',
+            role_permissions: {
+              some: {
+                permission: {
+                  name: 'system.admin',
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!hasSystemAdmin) {
+        return unauthorizedResponse('You do not have permission to update workflow templates');
+      }
+    }
+
+    // Validate UUIDs
+    const templateValidation = uuidSchema.safeParse(params.id);
+    const stepValidation = uuidSchema.safeParse(params.stepId);
+    
+    if (!templateValidation.success || !stepValidation.success) {
+      return errorResponse('Invalid workflow template ID or step ID', 400);
+    }
+
+    // Check if step exists and belongs to template
+    const step = await prisma.workflowStep.findUnique({
+      where: { id: params.stepId },
+    });
+
+    if (!step || step.workflow_template_id !== params.id) {
+      return notFoundResponse('Workflow step not found');
+    }
+
+    // Check if template has active instances (we allow deletion even with instances due to version isolation)
+    // But we should warn if there are active instances
+
+    // Delete step
+    await prisma.workflowStep.delete({
+      where: { id: params.stepId },
+    });
+
+    return successResponse({ message: 'Workflow step deleted successfully' });
+  } catch (error: any) {
+    console.error('Delete workflow step error:', error);
+    if (error.message.includes('Unauthorized')) {
+      return unauthorizedResponse(error.message);
+    }
+    return errorResponse(error.message || 'Internal server error', 500);
+  }
+}

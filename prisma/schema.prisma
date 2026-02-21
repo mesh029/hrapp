@@ -67,6 +67,11 @@ enum LeaveTypeStatus {
   inactive
 }
 
+enum StaffTypeStatus {
+  active
+  inactive
+}
+
 enum TimesheetStatus {
   Draft
   Submitted
@@ -74,6 +79,18 @@ enum TimesheetStatus {
   Approved
   Declined
   Locked
+}
+
+enum WeekendExtraStatus {
+  pending
+  approved
+  declined
+}
+
+enum OvertimeStatus {
+  pending
+  approved
+  declined
 }
 
 // Core Models
@@ -85,6 +102,14 @@ model User {
   status            UserStatus   @default(active)
   primary_location_id String?
   primary_location  Location?    @relation("UserPrimaryLocation", fields: [primary_location_id], references: [id])
+  manager_id        String?      // Optional manager relationship
+  manager           User?        @relation("UserManager", fields: [manager_id], references: [id])
+  direct_reports    User[]       @relation("UserManager")
+  staff_type_id     String?
+  staff_type        StaffType?   @relation(fields: [staff_type_id], references: [id])
+  contract_start_date DateTime?  @db.Date
+  contract_end_date   DateTime?  @db.Date
+  contract_status     String?    // "active", "expired", "unknown"
   deleted_at        DateTime?
   created_at        DateTime     @default(now())
   updated_at           DateTime     @updatedAt
@@ -98,12 +123,24 @@ model User {
   workflow_step_instances_acted WorkflowStepInstance[]
   leave_requests    LeaveRequest[]
   leave_balances    LeaveBalance[]
+  leave_balance_resets LeaveBalanceReset[]
+  leave_balance_adjustments LeaveBalanceAdjustment[]
+  leave_balance_resets_performed LeaveBalanceReset[] @relation("LeaveBalanceResetter")
+  leave_balance_adjustments_performed LeaveBalanceAdjustment[] @relation("LeaveBalanceAdjuster")
   timesheets        Timesheet[]
+  holidays_created  Holiday[]
+  weekend_extra_requests_created WeekendExtraRequest[] @relation("WeekendExtraRequester")
+  weekend_extra_requests_approved WeekendExtraRequest[] @relation("WeekendExtraApprover")
+  overtime_requests_created OvertimeRequest[] @relation("OvertimeRequester")
+  overtime_requests_approved OvertimeRequest[] @relation("OvertimeApprover")
   audit_logs        AuditLog[]
 
   @@index([status, deleted_at])
   @@index([primary_location_id])
   @@index([email])
+  @@index([manager_id])
+  @@index([staff_type_id])
+  @@index([contract_end_date, contract_status])
   @@map("users")
 }
 
@@ -184,6 +221,8 @@ model Location {
   leave_requests LeaveRequest[]
   timesheets     Timesheet[]
   work_hours_configs WorkHoursConfig[]
+  holidays       Holiday[]
+  accrual_configs LeaveAccrualConfig[]
 
   @@index([parent_id])
   @@index([status, parent_id])
@@ -319,20 +358,45 @@ model WorkflowStepInstance {
   @@map("workflow_step_instances")
 }
 
+model StaffType {
+  id          String         @id @default(uuid())
+  code        String         @unique // e.g., "regular", "temporary", "hrh"
+  name        String
+  description String?
+  status      StaffTypeStatus @default(active)
+  metadata    Json?          // Flexible storage for organization-specific fields
+  created_at  DateTime       @default(now())
+  updated_at  DateTime       @updatedAt
+  deleted_at  DateTime?
+
+  work_hours_configs WorkHoursConfig[]
+  accrual_configs LeaveAccrualConfig[]
+  users User[]
+
+  @@index([status, deleted_at])
+  @@index([code])
+  @@map("staff_types")
+}
+
 model LeaveType {
   id              String          @id @default(uuid())
   name            String          @unique
   description     String?
   is_paid         Boolean         @default(true)
   max_days_per_year Int?
-  accrual_rule    String?        // JSON: { type: "monthly", days: 1.25 }
+  accrual_rule    String?        // JSON: { type: "monthly", days: 1.25 } (deprecated - use LeaveAccrualConfig)
   status          LeaveTypeStatus @default(active)
   created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+  deleted_at      DateTime?
 
   leave_balances LeaveBalance[]
   leave_requests LeaveRequest[]
+  accrual_configs LeaveAccrualConfig[]
+  leave_balance_resets LeaveBalanceReset[]
+  leave_balance_adjustments LeaveBalanceAdjustment[]
 
-  @@index([status])
+  @@index([status, deleted_at])
   @@map("leave_types")
 }
 
@@ -372,6 +436,7 @@ model LeaveRequest {
   user          User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
   leave_type    LeaveType     @relation(fields: [leave_type_id], references: [id], onDelete: Cascade)
   location      Location      @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  timesheet_entries TimesheetEntry[]
 
   @@index([user_id, status, deleted_at])
   @@index([start_date, end_date])
@@ -399,6 +464,8 @@ model Timesheet {
   user    User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
   location Location       @relation(fields: [location_id], references: [id], onDelete: Cascade)
   entries TimesheetEntry[]
+  weekend_extra_requests WeekendExtraRequest[]
+  overtime_requests OvertimeRequest[]
 
   @@index([user_id, period_start, period_end])
   @@index([period_start, period_end, status])
@@ -409,50 +476,162 @@ model Timesheet {
 }
 
 model TimesheetEntry {
-  id          String   @id @default(uuid())
-  timesheet_id String
-  date        DateTime @db.Date
-  hours       Decimal  @db.Decimal(10, 2)
-  description String?
-  entry_type  String?  // "work", "leave", "holiday"
-  leave_request_id String?
-  created_at DateTime @default(now())
+  id                    String   @id @default(uuid())
+  timesheet_id          String
+  date                  DateTime @db.Date
+  work_hours            Decimal  @db.Decimal(10, 2) @default(0)  // User input: hours worked
+  leave_hours          Decimal  @db.Decimal(10, 2) @default(0)  // Auto: from approved leaves
+  holiday_hours         Decimal  @db.Decimal(10, 2) @default(0)  // Auto/Manual: from holidays
+  weekend_extra_hours   Decimal  @db.Decimal(10, 2) @default(0) // Approved weekend extra hours
+  overtime_hours       Decimal  @db.Decimal(10, 2) @default(0)  // Approved overtime hours
+  total_hours           Decimal  @db.Decimal(10, 2) @default(0)  // Calculated: work + leave + holiday + weekend_extra + overtime
+  expected_hours        Decimal  @db.Decimal(10, 2) @default(0)  // From work hours config
+  description           String?  // Optional notes
+  leave_request_id      String?  // If leave_hours > 0, link to leave request
+  holiday_id            String?  // If holiday_hours > 0, link to holiday
+  weekend_extra_request_id String? @unique // If weekend_extra_hours > 0, link to approved request
+  overtime_request_id   String?  @unique // If overtime_hours > 0, link to approved request
+  is_auto_added         Boolean  @default(false) // True if auto-added (leave/holiday)
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
 
   timesheet Timesheet @relation(fields: [timesheet_id], references: [id], onDelete: Cascade)
+  leave_request LeaveRequest? @relation(fields: [leave_request_id], references: [id], onDelete: SetNull)
+  holiday Holiday? @relation(fields: [holiday_id], references: [id], onDelete: SetNull)
+  weekend_extra_request WeekendExtraRequest? @relation(fields: [weekend_extra_request_id], references: [id], onDelete: SetNull)
+  overtime_request OvertimeRequest? @relation(fields: [overtime_request_id], references: [id], onDelete: SetNull)
 
-  @@index([timesheet_id])
+  @@unique([timesheet_id, date]) // One entry per day per timesheet
   @@index([timesheet_id, date])
+  @@index([date])
   @@map("timesheet_entries")
 }
 
 model TimesheetPeriod {
-  id          String    @id @default(uuid())
-  period_start DateTime @db.Date
-  period_end   DateTime @db.Date
-  is_locked   Boolean   @default(false)
-  locked_at   DateTime?
-  locked_by   String?
-  created_at  DateTime  @default(now())
+  id                String    @id @default(uuid())
+  period_start      DateTime  @db.Date
+  period_end        DateTime  @db.Date
+  is_locked         Boolean   @default(false)
+  submission_enabled Boolean   @default(false) // Managers control this
+  locked_at         DateTime?
+  locked_by         String?
+  enabled_at        DateTime?
+  enabled_by        String?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
 
   @@index([period_start, period_end])
   @@index([is_locked, locked_at])
+  @@index([submission_enabled])
   @@map("timesheet_periods")
+}
+
+model CountryHoliday {
+  id          String   @id @default(uuid())
+  country_code String  // "KE" for Kenya, "US" for USA, etc.
+  name        String
+  date        DateTime @db.Date
+  is_recurring Boolean @default(true) // Most national holidays recur annually
+  hours       Decimal  @db.Decimal(10, 2) // Hours for this holiday (from work hours config or default)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([country_code, date, name]) // One holiday per country per date
+  @@index([country_code, date])
+  @@index([is_recurring])
+  @@map("country_holidays")
+}
+
+model Holiday {
+  id          String   @id @default(uuid())
+  name        String
+  date        DateTime @db.Date
+  location_id String?  // Optional: location-specific holidays
+  hours       Decimal  @db.Decimal(10, 2) // Hours for this holiday
+  is_system   Boolean  @default(false) // True if from country config, false if manual
+  country_holiday_id String? // Link to country holiday if system-generated
+  created_by  String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  deleted_at  DateTime?
+
+  location Location? @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  creator  User     @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  timesheet_entries TimesheetEntry[]
+
+  @@unique([date, location_id]) // One holiday per date per location
+  @@index([date, location_id])
+  @@index([is_system])
+  @@map("holidays")
+}
+
+model WeekendExtraRequest {
+  id                String            @id @default(uuid())
+  timesheet_id      String
+  entry_date        DateTime          @db.Date
+  requested_hours   Decimal           @db.Decimal(10, 2)
+  reason            String
+  status            WeekendExtraStatus @default(pending)
+  approved_by       String?
+  approved_at       DateTime?
+  declined_reason   String?
+  created_by        String
+  created_at        DateTime          @default(now())
+  updated_at        DateTime          @updatedAt
+
+  timesheet Timesheet @relation(fields: [timesheet_id], references: [id], onDelete: Cascade)
+  approver  User?     @relation("WeekendExtraApprover", fields: [approved_by], references: [id], onDelete: SetNull)
+  requester User     @relation("WeekendExtraRequester", fields: [created_by], references: [id], onDelete: Cascade)
+  timesheet_entry TimesheetEntry?
+
+  @@unique([timesheet_id, entry_date]) // One request per day per timesheet
+  @@index([timesheet_id, status])
+  @@index([status, created_at])
+  @@map("weekend_extra_requests")
+}
+
+model OvertimeRequest {
+  id                String          @id @default(uuid())
+  timesheet_id      String
+  entry_date        DateTime        @db.Date
+  requested_hours   Decimal         @db.Decimal(10, 2)
+  reason            String
+  status            OvertimeStatus  @default(pending)
+  approved_by       String?
+  approved_at       DateTime?
+  declined_reason   String?
+  created_by        String
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+
+  timesheet Timesheet @relation(fields: [timesheet_id], references: [id], onDelete: Cascade)
+  approver  User?     @relation("OvertimeApprover", fields: [approved_by], references: [id], onDelete: SetNull)
+  requester User     @relation("OvertimeRequester", fields: [created_by], references: [id], onDelete: Cascade)
+  timesheet_entry TimesheetEntry?
+
+  @@unique([timesheet_id, entry_date]) // One request per day per timesheet
+  @@index([timesheet_id, status])
+  @@index([status, created_at])
+  @@map("overtime_requests")
 }
 
 model WorkHoursConfig {
   id          String   @id @default(uuid())
   location_id String?
-  staff_type  String?  // "Regular", "Temporary", "HRH"
+  staff_type_id String?
   day_of_week Int      // 0=Sunday, 1=Monday, ..., 6=Saturday
   hours       Decimal  @db.Decimal(10, 2)
   is_active   Boolean  @default(true)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+  deleted_at DateTime?
 
-  location Location? @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  location   Location?  @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  staff_type StaffType? @relation(fields: [staff_type_id], references: [id], onDelete: Cascade)
 
-  @@index([location_id, staff_type, day_of_week])
-  @@index([staff_type, day_of_week])
+  @@index([location_id, staff_type_id, day_of_week])
+  @@index([staff_type_id, day_of_week])
+  @@index([is_active, deleted_at])
   @@map("work_hours_configs")
 }
 
@@ -476,4 +655,63 @@ model AuditLog {
   @@index([timestamp])
   @@index([resource_type, resource_id, timestamp])
   @@map("audit_logs")
+}
+
+model LeaveAccrualConfig {
+  id                String   @id @default(uuid())
+  leave_type_id     String
+  location_id       String?  // Optional: location-specific
+  staff_type_id      String?  // Optional: staff-type-specific
+  accrual_rate      Decimal  @db.Decimal(10, 2) // Days per period
+  accrual_period     String   @default("monthly") // "monthly", "quarterly", "annual"
+  is_active        Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+  deleted_at        DateTime?
+
+  leave_type LeaveType @relation(fields: [leave_type_id], references: [id], onDelete: Cascade)
+  location   Location? @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  staff_type StaffType? @relation(fields: [staff_type_id], references: [id], onDelete: Cascade)
+
+  @@unique([leave_type_id, location_id, staff_type_id]) // One config per combination
+  @@index([leave_type_id, location_id, staff_type_id])
+  @@index([is_active, deleted_at])
+  @@map("leave_accrual_configs")
+}
+
+model LeaveBalanceReset {
+  id                String   @id @default(uuid())
+  user_id           String
+  leave_type_id     String?  // null = all leave types
+  reset_type        String   // "automatic" (contract expired) or "manual"
+  reason             String
+  reset_by          String?  // null if automatic
+  reset_at          DateTime @default(now())
+  
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  leave_type LeaveType? @relation(fields: [leave_type_id], references: [id], onDelete: Cascade)
+  resetter   User?     @relation("LeaveBalanceResetter", fields: [reset_by], references: [id], onDelete: SetNull)
+  
+  @@index([user_id, reset_at])
+  @@index([reset_type])
+  @@map("leave_balance_resets")
+}
+
+model LeaveBalanceAdjustment {
+  id            String   @id @default(uuid())
+  user_id       String
+  leave_type_id String
+  year          Int
+  adjustment    Decimal  @db.Decimal(10, 2) // Positive = add, Negative = subtract
+  reason        String
+  adjusted_by   String
+  adjusted_at   DateTime @default(now())
+  
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  leave_type LeaveType @relation(fields: [leave_type_id], references: [id], onDelete: Cascade)
+  adjuster   User      @relation("LeaveBalanceAdjuster", fields: [adjusted_by], references: [id], onDelete: Cascade)
+  
+  @@index([user_id, leave_type_id, year])
+  @@index([adjusted_at])
+  @@map("leave_balance_adjustments")
 }
