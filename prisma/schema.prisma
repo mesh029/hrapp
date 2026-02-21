@@ -93,6 +93,15 @@ enum OvertimeStatus {
   declined
 }
 
+enum NotificationType {
+  approval_request
+  approval_complete
+  leave_status
+  timesheet_status
+  delegation
+  system
+}
+
 // Core Models
 model User {
   id                String       @id @default(uuid())
@@ -134,6 +143,7 @@ model User {
   overtime_requests_created OvertimeRequest[] @relation("OvertimeRequester")
   overtime_requests_approved OvertimeRequest[] @relation("OvertimeApprover")
   audit_logs        AuditLog[]
+  notifications     Notification[]
 
   @@index([status, deleted_at])
   @@index([primary_location_id])
@@ -655,6 +665,29 @@ model AuditLog {
   @@index([timestamp])
   @@index([resource_type, resource_id, timestamp])
   @@map("audit_logs")
+}
+
+model Notification {
+  id            String           @id @default(uuid())
+  user_id      String
+  type         NotificationType
+  title        String
+  message      String
+  resource_type String?          // e.g., "leave", "timesheet", "workflow"
+  resource_id  String?
+  is_read      Boolean          @default(false)
+  read_at      DateTime?
+  email_sent   Boolean          @default(false)
+  email_sent_at DateTime?
+  created_at   DateTime         @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, is_read])
+  @@index([user_id, created_at])
+  @@index([resource_type, resource_id])
+  @@index([type])
+  @@map("notifications")
 }
 
 model LeaveAccrualConfig {

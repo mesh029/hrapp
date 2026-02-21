@@ -70,9 +70,13 @@ async function main() {
     { name: 'delegations.read', module: 'delegations', description: 'View delegations' },
     { name: 'delegations.update', module: 'delegations', description: 'Update delegations' },
     { name: 'delegations.delete', module: 'delegations', description: 'Delete delegations' },
+    { name: 'delegations.revoke', module: 'delegations', description: 'Revoke delegations' },
     
     // System admin
     { name: 'system.admin', module: 'system', description: 'System administrator access' },
+    
+    // Audit
+    { name: 'audit.read', module: 'audit', description: 'View audit logs' },
   ];
 
   const createdPermissions = await Promise.all(

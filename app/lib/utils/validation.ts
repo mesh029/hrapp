@@ -35,14 +35,14 @@ export const createStaffTypeSchema = z.object({
   code: z.string().min(1).max(50).regex(/^[a-z0-9_]+$/, 'Code must be lowercase alphanumeric with underscores'),
   name: z.string().min(1).max(255),
   description: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 });
 
 export const updateStaffTypeSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional(),
   status: z.enum(['active', 'inactive']).optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 });
 
 /**
@@ -319,4 +319,42 @@ export const adjustLeaveBalanceSchema = z.object({
 export const updateContractSchema = z.object({
   contract_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').nullable().optional(),
   contract_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').nullable().optional(),
+});
+
+/**
+ * Delegation schemas
+ */
+export const createDelegationSchema = z.object({
+  delegate_user_id: z.string().uuid('Invalid delegate user ID'),
+  permission_id: z.string().uuid('Invalid permission ID'),
+  location_id: z.string().uuid('Invalid location ID').nullable().optional(),
+  include_descendants: z.boolean().default(false),
+  valid_from: z.coerce.date(),
+  valid_until: z.coerce.date(),
+  delegator_user_id: z.string().uuid('Invalid delegator user ID').optional(), // For admin delegation
+}).refine((data) => data.valid_until > data.valid_from, {
+  message: 'valid_until must be after valid_from',
+  path: ['valid_until'],
+});
+
+/**
+ * Notification schemas
+ */
+export const markNotificationReadSchema = z.object({
+  notificationIds: z.array(z.string().uuid('Invalid notification ID')).optional(),
+  markAll: z.boolean().default(false),
+});
+
+/**
+ * Audit log filter schemas
+ */
+export const auditLogFilterSchema = z.object({
+  actor_id: z.string().uuid('Invalid actor ID').optional(),
+  action: z.string().optional(),
+  resource_type: z.string().optional(),
+  resource_id: z.string().optional(),
+  start_date: z.coerce.date().optional(),
+  end_date: z.coerce.date().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(50),
 });

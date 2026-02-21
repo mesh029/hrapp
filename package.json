@@ -12,7 +12,8 @@
     "db:studio": "prisma studio",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "test:timesheet": "tsx scripts/test-timesheet-scenarios.ts"
+    "test:timesheet": "tsx scripts/test-timesheet-scenarios.ts",
+    "test:delegation": "tsx scripts/test-delegation.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.1",

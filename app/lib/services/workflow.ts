@@ -2,6 +2,8 @@ import { prisma } from '@/lib/db';
 import { checkAuthority } from '@/lib/services/authority';
 import { generateDigitalSignature } from '@/lib/auth/jwt';
 import { WorkflowStatus, WorkflowStepStatus, ResourceType } from '@prisma/client';
+import { NotificationHelpers } from './notification';
+import { AuditHelpers } from './audit';
 
 export interface CreateWorkflowInstanceParams {
   templateId: string;
@@ -102,6 +104,8 @@ export async function submitWorkflowInstance(instanceId: string): Promise<void> 
     throw new Error('Workflow template has no steps');
   }
 
+  const beforeState = { status: instance.status, current_step_order: instance.current_step_order };
+  
   await prisma.workflowInstance.update({
     where: { id: instanceId },
     data: {
@@ -109,6 +113,58 @@ export async function submitWorkflowInstance(instanceId: string): Promise<void> 
       current_step_order: firstStep.step_order,
     },
   });
+
+  const afterState = { status: 'Submitted', current_step_order: firstStep.step_order };
+
+  // Get locationId from resource
+  let locationId = '';
+  if (instance.resource_type === 'leave') {
+    const leaveRequest = await prisma.leaveRequest.findUnique({
+      where: { id: instance.resource_id },
+      select: { location_id: true },
+    });
+    locationId = leaveRequest?.location_id || '';
+  } else if (instance.resource_type === 'timesheet') {
+    const timesheet = await prisma.timesheet.findUnique({
+      where: { id: instance.resource_id },
+      select: { location_id: true },
+    });
+    locationId = timesheet?.location_id || '';
+  }
+
+  // Audit log
+  await AuditHelpers.logWorkflowAction(
+    instance.created_by,
+    'submit',
+    instanceId,
+    instance.resource_type,
+    instance.resource_id,
+    beforeState,
+    afterState,
+    { step_order: firstStep.step_order },
+    undefined
+  ).catch((error) => {
+    console.error('Failed to create audit log for workflow submit:', error);
+  });
+
+  // Notify first step approvers
+  if (locationId) {
+    const approvers = await resolveApprovers(firstStep.step_order, instanceId, locationId, {
+      includeEmployeeManager: true,
+    });
+
+    for (const approverId of approvers) {
+      await NotificationHelpers.notifyWorkflowStepAssignment(
+        approverId,
+        instanceId,
+        instance.resource_type,
+        instance.resource_id,
+        firstStep.step_order
+      ).catch((error) => {
+        console.error(`Failed to notify approver ${approverId}:`, error);
+      });
+    }
+  }
 }
 
 /**
@@ -303,6 +359,13 @@ export async function approveWorkflowStep(params: WorkflowActionParams): Promise
     },
   });
 
+  // Capture before state for audit log
+  const beforeState = {
+    status: instance.status,
+    current_step_order: instance.current_step_order,
+    step_status: 'pending',
+  };
+
   // Check if this is the last step
   const lastStep = instance.template.steps[instance.template.steps.length - 1];
   const isLastStep = instance.current_step_order === lastStep.step_order;
@@ -315,6 +378,38 @@ export async function approveWorkflowStep(params: WorkflowActionParams): Promise
         status: 'Approved',
         current_step_order: instance.current_step_order,
       },
+    });
+
+    const afterState = {
+      status: 'Approved',
+      current_step_order: instance.current_step_order,
+      step_status: 'approved',
+    };
+
+    // Audit log
+    await AuditHelpers.logWorkflowAction(
+      userId,
+      'approve',
+      instanceId,
+      instance.resource_type,
+      instance.resource_id,
+      beforeState,
+      afterState,
+      { step_order: instance.current_step_order, is_final: true, comment },
+      ipAddress
+    ).catch((error) => {
+      console.error('Failed to create audit log for workflow approval:', error);
+    });
+
+    // Notify requester of completion
+    await NotificationHelpers.notifyWorkflowComplete(
+      instance.created_by,
+      instanceId,
+      instance.resource_type,
+      instance.resource_id,
+      'Approved'
+    ).catch((error) => {
+      console.error('Failed to notify requester of approval:', error);
     });
 
     // Handle resource-specific approval logic
@@ -337,6 +432,44 @@ export async function approveWorkflowStep(params: WorkflowActionParams): Promise
           current_step_order: nextStep.step_order,
         },
       });
+
+      const afterState = {
+        status: 'UnderReview',
+        current_step_order: nextStep.step_order,
+        step_status: 'approved',
+      };
+
+      // Audit log
+      await AuditHelpers.logWorkflowAction(
+        userId,
+        'approve',
+        instanceId,
+        instance.resource_type,
+        instance.resource_id,
+        beforeState,
+        afterState,
+        { step_order: instance.current_step_order, next_step_order: nextStep.step_order, comment },
+        ipAddress
+      ).catch((error) => {
+        console.error('Failed to create audit log for workflow approval:', error);
+      });
+
+      // Notify next step approvers
+      const approvers = await resolveApprovers(nextStep.step_order, instanceId, locationId, {
+        includeEmployeeManager: true,
+      });
+
+      for (const approverId of approvers) {
+        await NotificationHelpers.notifyWorkflowStepAssignment(
+          approverId,
+          instanceId,
+          instance.resource_type,
+          instance.resource_id,
+          nextStep.step_order
+        ).catch((error) => {
+          console.error(`Failed to notify approver ${approverId}:`, error);
+        });
+      }
     }
   }
 }
@@ -424,12 +557,51 @@ export async function declineWorkflowStep(params: WorkflowActionParams): Promise
     },
   });
 
+  // Capture before state for audit log
+  const beforeState = {
+    status: instance.status,
+    current_step_order: instance.current_step_order,
+    step_status: 'pending',
+  };
+
   // Mark workflow as declined
   await prisma.workflowInstance.update({
     where: { id: instanceId },
     data: {
       status: 'Declined',
     },
+  });
+
+  const afterState = {
+    status: 'Declined',
+    current_step_order: instance.current_step_order,
+    step_status: 'declined',
+  };
+
+  // Audit log
+  await AuditHelpers.logWorkflowAction(
+    userId,
+    'decline',
+    instanceId,
+    instance.resource_type,
+    instance.resource_id,
+    beforeState,
+    afterState,
+    { step_order: instance.current_step_order, comment },
+    ipAddress
+  ).catch((error) => {
+    console.error('Failed to create audit log for workflow decline:', error);
+  });
+
+  // Notify requester of decline
+  await NotificationHelpers.notifyWorkflowComplete(
+    instance.created_by,
+    instanceId,
+    instance.resource_type,
+    instance.resource_id,
+    'Declined'
+  ).catch((error) => {
+    console.error('Failed to notify requester of decline:', error);
   });
 
   // Handle resource-specific decline logic
@@ -523,6 +695,13 @@ export async function adjustWorkflowStep(params: WorkflowActionParams): Promise<
     },
   });
 
+  // Capture before state for audit log
+  const beforeState = {
+    status: instance.status,
+    current_step_order: instance.current_step_order,
+    step_status: 'pending',
+  };
+
   // Route to specified step or back to Draft (employee)
   if (routeToStep !== null && routeToStep !== undefined) {
     // Route to specific step
@@ -538,6 +717,44 @@ export async function adjustWorkflowStep(params: WorkflowActionParams): Promise<
         current_step_order: routeToStep,
       },
     });
+
+    const afterState = {
+      status: 'UnderReview',
+      current_step_order: routeToStep,
+      step_status: 'adjusted',
+    };
+
+    // Audit log
+    await AuditHelpers.logWorkflowAction(
+      userId,
+      'adjust',
+      instanceId,
+      instance.resource_type,
+      instance.resource_id,
+      beforeState,
+      afterState,
+      { step_order: instance.current_step_order, route_to_step: routeToStep, comment },
+      ipAddress
+    ).catch((error) => {
+      console.error('Failed to create audit log for workflow adjust:', error);
+    });
+
+    // Notify target step approvers
+    const approvers = await resolveApprovers(routeToStep, instanceId, locationId, {
+      includeEmployeeManager: true,
+    });
+
+    for (const approverId of approvers) {
+      await NotificationHelpers.notifyWorkflowStepAssignment(
+        approverId,
+        instanceId,
+        instance.resource_type,
+        instance.resource_id,
+        routeToStep
+      ).catch((error) => {
+        console.error(`Failed to notify approver ${approverId}:`, error);
+      });
+    }
   } else {
     // Route back to employee (Draft)
     await prisma.workflowInstance.update({
@@ -546,6 +763,38 @@ export async function adjustWorkflowStep(params: WorkflowActionParams): Promise<
         status: 'Adjusted',
         current_step_order: 0,
       },
+    });
+
+    const afterState = {
+      status: 'Adjusted',
+      current_step_order: 0,
+      step_status: 'adjusted',
+    };
+
+    // Audit log
+    await AuditHelpers.logWorkflowAction(
+      userId,
+      'adjust',
+      instanceId,
+      instance.resource_type,
+      instance.resource_id,
+      beforeState,
+      afterState,
+      { step_order: instance.current_step_order, route_to_employee: true, comment },
+      ipAddress
+    ).catch((error) => {
+      console.error('Failed to create audit log for workflow adjust:', error);
+    });
+
+    // Notify requester
+    await NotificationHelpers.notifyWorkflowComplete(
+      instance.created_by,
+      instanceId,
+      instance.resource_type,
+      instance.resource_id,
+      'Adjusted'
+    ).catch((error) => {
+      console.error('Failed to notify requester of adjustment:', error);
     });
   }
 
@@ -579,11 +828,36 @@ export async function cancelWorkflowInstance(instanceId: string, userId: string)
     throw new Error('Workflow instance cannot be cancelled in current status');
   }
 
+  const beforeState = {
+    status: instance.status,
+    current_step_order: instance.current_step_order,
+  };
+
   await prisma.workflowInstance.update({
     where: { id: instanceId },
     data: {
       status: 'Cancelled',
     },
+  });
+
+  const afterState = {
+    status: 'Cancelled',
+    current_step_order: instance.current_step_order,
+  };
+
+  // Audit log
+  await AuditHelpers.logWorkflowAction(
+    userId,
+    'cancel',
+    instanceId,
+    instance.resource_type,
+    instance.resource_id,
+    beforeState,
+    afterState,
+    {},
+    undefined
+  ).catch((error) => {
+    console.error('Failed to create audit log for workflow cancel:', error);
   });
 
   // Handle resource-specific cancel logic
