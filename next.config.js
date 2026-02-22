@@ -12,10 +12,8 @@ const nextConfig = {
     JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
   },
   
-  // Experimental features
-  experimental: {
-    serverActions: false, // Use API routes only
-  },
+  // Note: Server Actions are available by default in Next.js 14+
+  // We use API routes for all backend operations
 };
 
 module.exports = nextConfig;

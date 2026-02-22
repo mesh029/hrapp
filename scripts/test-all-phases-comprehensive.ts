@@ -227,7 +227,7 @@ async function main() {
           primary_location_id: testLocation.id,
           status: 'active',
           staff_number: `EMP-${Date.now()}`,
-        }, adminToken);
+        }, adminToken || undefined);
 
         if (status === 201 && data.data?.id) {
           testUsers.push(data.data);
@@ -266,7 +266,7 @@ async function main() {
 
     // Test 2.1: List Locations
     try {
-      const { status, data } = await makeRequest('GET', '/api/locations', undefined, adminToken);
+      const { status, data } = await makeRequest('GET', '/api/locations', undefined, adminToken || undefined);
       const locations = data.data?.locations || data.data || [];
       if (status === 200 && Array.isArray(locations)) {
         logResult('2.1 List Locations', 'PASS', `Found ${locations.length} locations`);
@@ -279,7 +279,7 @@ async function main() {
 
     // Test 2.2: List Staff Types
     try {
-      const { status, data } = await makeRequest('GET', '/api/staff-types', undefined, adminToken);
+      const { status, data } = await makeRequest('GET', '/api/staff-types', undefined, adminToken || undefined);
       const staffTypes = data.data?.staffTypes || data.data || [];
       if (status === 200 && Array.isArray(staffTypes)) {
         logResult('2.2 List Staff Types', 'PASS', `Found ${staffTypes.length} staff types`);
@@ -300,7 +300,7 @@ async function main() {
 
     // Test 3.1: List Leave Types
     try {
-      const { status, data } = await makeRequest('GET', '/api/leave/types', undefined, adminToken);
+      const { status, data } = await makeRequest('GET', '/api/leave/types', undefined, adminToken || undefined);
       const leaveTypes = data.data?.leaveTypes || data.data || [];
       if (status === 200 && Array.isArray(leaveTypes)) {
         leaveType = leaveTypes[0];
@@ -331,7 +331,7 @@ async function main() {
           end_date: endDate.toISOString().split('T')[0],
           reason: 'Test leave request for comprehensive testing',
           location_id: employee.primary_location_id || testLocation.id,
-        }, adminToken);
+        }, adminToken || undefined);
 
         if (status === 201 && data.data?.id) {
           leaveRequestId = data.data.id;
@@ -347,7 +347,7 @@ async function main() {
     // Test 3.3: Submit Leave Request
     if (leaveRequestId) {
       try {
-        const { status, data } = await makeRequest('POST', `/api/leave/requests/${leaveRequestId}/submit`, {}, adminToken);
+        const { status, data } = await makeRequest('POST', `/api/leave/requests/${leaveRequestId}/submit`, {}, adminToken || undefined);
         if (status === 200) {
           logResult('3.3 Submit Leave Request', 'PASS', 'Leave request submitted for approval');
         } else {
@@ -365,7 +365,7 @@ async function main() {
 
     // Test 4.1: List Workflow Templates
     try {
-      const { status, data } = await makeRequest('GET', '/api/workflows/templates', undefined, adminToken);
+      const { status, data } = await makeRequest('GET', '/api/workflows/templates', undefined, adminToken || undefined);
       const templates = data.data?.templates || data.data || [];
       if (status === 200 && Array.isArray(templates)) {
         testWorkflows = templates;
@@ -391,7 +391,7 @@ async function main() {
       if (workflowInstance) {
         const { status, data } = await makeRequest('POST', `/api/workflows/instances/${workflowInstance.id}/approve`, {
           comment: 'Test approval from comprehensive test suite',
-        }, adminToken);
+        }, adminToken || undefined);
 
         if (status === 200) {
           logResult('4.2 Approve Workflow Step', 'PASS', 'Workflow step approved');
@@ -431,7 +431,7 @@ async function main() {
           period_start: periodStart.toISOString().split('T')[0],
           period_end: periodEnd.toISOString().split('T')[0],
           user_id: employee.id,
-        }, adminToken);
+        }, adminToken || undefined);
 
         if (status === 201 && data.data?.id) {
           timesheetId = data.data.id;
@@ -450,7 +450,7 @@ async function main() {
     // Test 5.2: Submit Timesheet
     if (timesheetId) {
       try {
-        const { status, data } = await makeRequest('POST', `/api/timesheets/${timesheetId}/submit`, {}, adminToken);
+        const { status, data } = await makeRequest('POST', `/api/timesheets/${timesheetId}/submit`, {}, adminToken || undefined);
         if (status === 200) {
           logResult('5.2 Submit Timesheet', 'PASS', 'Timesheet submitted for approval');
         } else {
@@ -464,7 +464,7 @@ async function main() {
     // Test 5.3: Validate Timesheet
     if (timesheetId) {
       try {
-        const { status, data } = await makeRequest('GET', `/api/timesheets/${timesheetId}/validate`, {}, adminToken);
+        const { status, data } = await makeRequest('GET', `/api/timesheets/${timesheetId}/validate`, {}, adminToken || undefined);
         if (status === 200) {
           logResult('5.3 Validate Timesheet', 'PASS', 'Timesheet validation completed');
         } else {
@@ -482,7 +482,7 @@ async function main() {
 
     // Test 6.1: Dashboard Data
     try {
-      const { status, data } = await makeRequest('GET', '/api/reports/dashboard', undefined, adminToken);
+      const { status, data } = await makeRequest('GET', '/api/reports/dashboard', undefined, adminToken || undefined);
       if (status === 200) {
         logResult('6.1 Dashboard Data', 'PASS', 'Dashboard data retrieved');
       } else {
@@ -494,7 +494,7 @@ async function main() {
 
     // Test 6.2: Leave Balances
     try {
-      const { status, data } = await makeRequest('GET', '/api/leave/balances', undefined, adminToken);
+      const { status, data } = await makeRequest('GET', '/api/leave/balances', undefined, adminToken || undefined);
       if (status === 200) {
         logResult('6.2 Leave Balances', 'PASS', 'Leave balances retrieved');
       } else {

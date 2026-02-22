@@ -213,7 +213,7 @@ async function main() {
             { step_order: 4, required_permission: 'leave.approve', allow_decline: true, allow_adjust: false },
             { step_order: 5, required_permission: 'leave.approve', allow_decline: false, allow_adjust: false },
           ],
-        }, adminToken);
+        }, adminToken || undefined);
 
         if (status === 201 && data.data?.id) {
           workflowTemplateId = data.data.id;
@@ -255,7 +255,7 @@ async function main() {
             leave_type_id: leaveType.id,
             year: new Date().getFullYear(),
             days: daysToAllocate,
-          }, adminToken);
+          }, adminToken || undefined);
           
           if (allocateResponse.status === 200 && allocateResponse.data.success) {
             logResult('1.2 Allocate Leave Balance', 'PASS', `Allocated ${daysToAllocate} days successfully`);
@@ -294,16 +294,16 @@ async function main() {
           end_date: endDate.toISOString().split('T')[0],
           reason: 'Complex workflow test - 5 step approval',
           location_id: employee.primary_location_id,
-        }, adminToken);
+        }, adminToken || undefined);
 
         if (status === 201 && data.data?.id) {
           leaveRequestId = data.data.id;
           
           // Submit for approval
-          const submitResponse = await makeRequest('POST', `/api/leave/requests/${leaveRequestId}/submit`, {}, adminToken);
+          const submitResponse = await makeRequest('POST', `/api/leave/requests/${leaveRequestId}/submit`, {}, adminToken || undefined);
           if (submitResponse.status === 200) {
             const workflowInstance = await prisma.workflowInstance.findFirst({
-              where: { resource_type: 'leave', resource_id: leaveRequestId },
+              where: { resource_type: 'leave', resource_id: leaveRequestId || undefined },
             });
             if (workflowInstance) {
               workflowInstanceId = workflowInstance.id;
@@ -334,7 +334,7 @@ async function main() {
           
           const { status, data } = await makeRequest('POST', `/api/workflows/instances/${workflowInstanceId}/approve`, {
             comment: `Step ${currentStep} approved by ${approver.name}`,
-          }, adminToken);
+          }, adminToken || undefined);
 
           if (status === 200) {
             const instance = await prisma.workflowInstance.findUnique({
@@ -403,7 +403,7 @@ async function main() {
             leave_type_id: leaveType.id,
             year: new Date().getFullYear(),
             days: daysToAllocate,
-          }, adminToken);
+          }, adminToken || undefined);
         }
 
         // Check available balance
@@ -433,13 +433,13 @@ async function main() {
           end_date: endDate.toISOString().split('T')[0],
           reason: 'Test decline scenario',
           location_id: employee.primary_location_id,
-        }, adminToken);
+        }, adminToken || undefined);
 
         if (status === 201 && data.data?.id) {
           const requestId = data.data.id;
           
           // Submit
-          const submitResponse = await makeRequest('POST', `/api/leave/requests/${requestId}/submit`, {}, adminToken);
+          const submitResponse = await makeRequest('POST', `/api/leave/requests/${requestId}/submit`, {}, adminToken || undefined);
           if (submitResponse.status === 200) {
             const workflowInstance = await prisma.workflowInstance.findFirst({
               where: { resource_type: 'leave', resource_id: requestId },
@@ -452,13 +452,13 @@ async function main() {
               for (let step = 1; step <= 2; step++) {
                 await makeRequest('POST', `/api/workflows/instances/${declinedWorkflowId}/approve`, {
                   comment: `Step ${step} approved`,
-                }, adminToken);
+                }, adminToken || undefined);
               }
 
               // Decline at step 3
               const declineResponse = await makeRequest('POST', `/api/workflows/instances/${declinedWorkflowId}/decline`, {
                 comment: 'Insufficient documentation. Please provide more details.',
-              }, adminToken);
+              }, adminToken || undefined);
 
               if (declineResponse.status === 200) {
                 const declinedInstance = await prisma.workflowInstance.findUnique({
@@ -471,13 +471,13 @@ async function main() {
                   // Update leave request
                   const updateResponse = await makeRequest('PATCH', `/api/leave/requests/${requestId}`, {
                     reason: 'Updated reason with more documentation',
-                  }, adminToken);
+                  }, adminToken || undefined);
 
                   if (updateResponse.status === 200) {
                     logResult('2.3 Update Declined Request', 'PASS', 'Request updated after decline');
                     
                     // Resubmit
-                    const resubmitResponse = await makeRequest('POST', `/api/leave/requests/${requestId}/submit`, {}, adminToken);
+                    const resubmitResponse = await makeRequest('POST', `/api/leave/requests/${requestId}/submit`, {}, adminToken || undefined);
                     if (resubmitResponse.status === 200) {
                       const newWorkflow = await prisma.workflowInstance.findFirst({
                         where: { resource_type: 'leave', resource_id: requestId, status: 'Submitted' },
@@ -509,6 +509,7 @@ async function main() {
           }
         } else {
           logResult('2.1 Create Leave Request for Decline Test', 'FAIL', `Failed: ${JSON.stringify(data).substring(0, 200)}`);
+        }
         }
       }
     } catch (error: any) {
@@ -548,7 +549,7 @@ async function main() {
             leave_type_id: leaveType.id,
             year: new Date().getFullYear(),
             days: daysToAllocate,
-          }, adminToken);
+          }, adminToken || undefined);
         }
 
         // Check available balance
@@ -578,13 +579,13 @@ async function main() {
           end_date: endDate.toISOString().split('T')[0],
           reason: 'Test adjust scenario',
           location_id: employee.primary_location_id,
-        }, adminToken);
+        }, adminToken || undefined);
 
         if (status === 201 && data.data?.id) {
           const requestId = data.data.id;
           
           // Submit
-          const submitResponse = await makeRequest('POST', `/api/leave/requests/${requestId}/submit`, {}, adminToken);
+          const submitResponse = await makeRequest('POST', `/api/leave/requests/${requestId}/submit`, {}, adminToken || undefined);
           if (submitResponse.status === 200) {
             const workflowInstance = await prisma.workflowInstance.findFirst({
               where: { resource_type: 'leave', resource_id: requestId },
@@ -594,13 +595,13 @@ async function main() {
               // Approve step 1
               await makeRequest('POST', `/api/workflows/instances/${workflowInstance.id}/approve`, {
                 comment: 'Step 1 approved',
-              }, adminToken);
+              }, adminToken || undefined);
 
               // Adjust and route back to step 1
               const adjustResponse = await makeRequest('POST', `/api/workflows/instances/${workflowInstance.id}/adjust`, {
                 comment: 'Please adjust dates and resubmit',
                 route_to_step: 1,
-              }, adminToken);
+              }, adminToken || undefined);
 
               if (adjustResponse.status === 200) {
                 const adjustedInstance = await prisma.workflowInstance.findUnique({
@@ -646,7 +647,7 @@ async function main() {
           allow_decline: true,
           allow_adjust: i === 0,
         })),
-      }, adminToken);
+      }, adminToken || undefined);
 
       if (status === 201 && data.data?.id) {
         const templateId = data.data.id;
@@ -664,11 +665,11 @@ async function main() {
             end_date: endDate.toISOString().split('T')[0],
             reason: '7-step cycling test',
             location_id: employee.primary_location_id,
-          }, adminToken);
+          }, adminToken || undefined);
 
           if (reqStatus === 201 && reqData.data?.id) {
             const requestId = reqData.data.id;
-            const submitResponse = await makeRequest('POST', `/api/leave/requests/${requestId}/submit`, {}, adminToken);
+            const submitResponse = await makeRequest('POST', `/api/leave/requests/${requestId}/submit`, {}, adminToken || undefined);
             
             if (submitResponse.status === 200) {
               const workflowInstance = await prisma.workflowInstance.findFirst({
@@ -684,7 +685,7 @@ async function main() {
                   
                   const { status: approveStatus } = await makeRequest('POST', `/api/workflows/instances/${workflowInstance.id}/approve`, {
                     comment: `Step ${step} approved by ${approver.name} (approver ${approverIndex + 1})`,
-                  }, adminToken);
+                  }, adminToken || undefined);
 
                   if (approveStatus !== 200) {
                     allApproved = false;
@@ -736,11 +737,11 @@ async function main() {
           end_date: endDate.toISOString().split('T')[0],
           reason: 'Test cancellation',
           location_id: employee.primary_location_id,
-        }, adminToken);
+        }, adminToken || undefined);
 
         if (status === 201 && data.data?.id) {
           const requestId = data.data.id;
-          const submitResponse = await makeRequest('POST', `/api/leave/requests/${requestId}/submit`, {}, adminToken);
+          const submitResponse = await makeRequest('POST', `/api/leave/requests/${requestId}/submit`, {}, adminToken || undefined);
           
           if (submitResponse.status === 200) {
             const workflowInstance = await prisma.workflowInstance.findFirst({
@@ -749,7 +750,7 @@ async function main() {
             
             if (workflowInstance) {
               // Cancel workflow
-              const cancelResponse = await makeRequest('POST', `/api/workflows/instances/${workflowInstance.id}/cancel`, {}, adminToken);
+              const cancelResponse = await makeRequest('POST', `/api/workflows/instances/${workflowInstance.id}/cancel`, {}, adminToken || undefined);
               
               if (cancelResponse.status === 200) {
                 const cancelledInstance = await prisma.workflowInstance.findUnique({

@@ -8,6 +8,11 @@ import {
 } from '@/lib/auth/jwt';
 import { loginSchema } from '@/lib/utils/validation';
 import { errorResponse, successResponse } from '@/lib/utils/responses';
+import { corsHeaders, handleCorsOptions } from '@/lib/middleware/cors';
+
+export async function OPTIONS() {
+  return handleCorsOptions();
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -68,7 +73,7 @@ export async function POST(request: NextRequest) {
     await storeRefreshToken(user.id, refreshToken);
 
     // Return tokens and user info
-    return successResponse(
+    const response = successResponse(
       {
         accessToken,
         refreshToken,
@@ -82,6 +87,13 @@ export async function POST(request: NextRequest) {
       'Login successful',
       200
     );
+    
+    // Add CORS headers
+    Object.entries(corsHeaders()).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+    
+    return response;
   } catch (error: any) {
     console.error('Login error:', error);
     return errorResponse(error.message || 'Internal server error', 500);

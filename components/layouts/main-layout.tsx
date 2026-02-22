@@ -1,0 +1,239 @@
+'use client';
+
+import * as React from 'react';
+import { usePathname } from 'next/navigation';
+import { 
+  LayoutDashboard, 
+  Users, 
+  Calendar, 
+  Clock, 
+  Workflow, 
+  BarChart, 
+  Settings, 
+  Shield, 
+  User,
+  Menu,
+  Bell
+} from 'lucide-react';
+import { Sidebar, SidebarContent, SidebarItem } from '@/components/ui/sidebar';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
+
+interface MainLayoutProps {
+  children: React.ReactNode;
+}
+
+// Icon mapping for navigation
+const iconMap: Record<string, any> = {
+  '/dashboard': LayoutDashboard,
+  '/users': Users,
+  '/leave': Calendar,
+  '/timesheets': Clock,
+  '/workflows': Workflow,
+  '/reports': BarChart,
+  '/configuration': Settings,
+  '/administration': Shield,
+  '/profile': User,
+};
+
+export function MainLayout({ children }: MainLayoutProps) {
+  const pathname = usePathname();
+  const { navigationItems: dynamicNavItems, features, isLoading: uiLoading } = useDynamicUI();
+  const [isMinimized, setIsMinimized] = React.useState(true); // Start minimized
+  const [isMobileOpen, setIsMobileOpen] = React.useState(false);
+  const sidebarRef = React.useRef<HTMLDivElement>(null);
+  const mainContentRef = React.useRef<HTMLDivElement>(null);
+
+  // Auto-minimize/expand based on mouse position
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || window.innerWidth < 1024) {
+      return; // Only for desktop
+    }
+
+    let hoverTimeout: NodeJS.Timeout;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const sidebar = sidebarRef.current;
+      const mainContent = mainContentRef.current;
+      
+      if (!sidebar || !mainContent) return;
+
+      const mouseX = e.clientX;
+      const sidebarRect = sidebar.getBoundingClientRect();
+
+      // Clear any existing timeout
+      clearTimeout(hoverTimeout);
+
+      // If mouse is over sidebar area (within 100px of left edge), expand it
+      if (mouseX <= sidebarRect.right + 50) {
+        clearTimeout(hoverTimeout);
+        setIsMinimized(false);
+      } 
+      // If mouse is in main content area (far from sidebar), minimize
+      else if (mouseX > sidebarRect.right + 100) {
+        // Small delay before minimizing to avoid flickering
+        hoverTimeout = setTimeout(() => {
+          setIsMinimized(true);
+        }, 500);
+      }
+    };
+
+    // Handle mouse entering sidebar
+    const handleSidebarEnter = () => {
+      clearTimeout(hoverTimeout);
+      setIsMinimized(false);
+    };
+
+    // Handle mouse leaving sidebar
+    const handleSidebarLeave = () => {
+      clearTimeout(hoverTimeout);
+      hoverTimeout = setTimeout(() => {
+        setIsMinimized(true);
+      }, 300);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    const sidebar = sidebarRef.current;
+    if (sidebar) {
+      sidebar.addEventListener('mouseenter', handleSidebarEnter);
+      sidebar.addEventListener('mouseleave', handleSidebarLeave);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (sidebar) {
+        sidebar.removeEventListener('mouseenter', handleSidebarEnter);
+        sidebar.removeEventListener('mouseleave', handleSidebarLeave);
+      }
+      clearTimeout(hoverTimeout);
+    };
+  }, []);
+
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
+  const showMinimized = isMinimized && !isMobile;
+
+  // Map dynamic navigation items with icons
+  const navigationItems = dynamicNavItems.map(item => ({
+    ...item,
+    icon: iconMap[item.href] || LayoutDashboard,
+  }));
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {/* Sidebar - Desktop */}
+      <Sidebar
+        ref={sidebarRef}
+        variant={showMinimized ? 'minimized' : 'default'}
+        className={cn(
+          'hidden lg:flex transition-all duration-300 ease-in-out'
+        )}
+      >
+        <SidebarContent className="pt-4">
+          <nav className="space-y-1">
+            {navigationItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname?.startsWith(item.href);
+              return (
+                <SidebarItem
+                  key={item.href}
+                  href={item.href}
+                  variant={isActive ? 'active' : 'default'}
+                  icon={<Icon className="h-5 w-5 flex-shrink-0" />}
+                  minimized={showMinimized}
+                  className={cn(
+                    showMinimized && 'justify-center',
+                    'group relative'
+                  )}
+                >
+                  {!showMinimized && <span>{item.label}</span>}
+                  {showMinimized && (
+                    <span className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-sm rounded-md opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 shadow-lg border border-border transition-opacity">
+                      {item.label}
+                    </span>
+                  )}
+                </SidebarItem>
+              );
+            })}
+          </nav>
+        </SidebarContent>
+      </Sidebar>
+
+      {/* Spacer to prevent overlap - matches sidebar width */}
+      <div 
+        className={cn(
+          'hidden lg:block transition-all duration-300 ease-in-out flex-shrink-0',
+          showMinimized ? 'w-16' : 'w-64'
+        )}
+      />
+
+      {/* Mobile Drawer */}
+      {isMobileOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            onClick={() => setIsMobileOpen(false)}
+          />
+          <Sidebar
+            variant="default"
+            className="lg:hidden z-50"
+          >
+            <SidebarContent>
+              <nav className="space-y-1 pt-4">
+                {navigationItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname?.startsWith(item.href);
+                  return (
+                    <SidebarItem
+                      key={item.href}
+                      href={item.href}
+                      variant={isActive ? 'active' : 'default'}
+                      icon={<Icon className="h-5 w-5" />}
+                      minimized={false}
+                      onClick={() => setIsMobileOpen(false)}
+                    >
+                      {item.label}
+                    </SidebarItem>
+                  );
+                })}
+              </nav>
+            </SidebarContent>
+          </Sidebar>
+        </>
+      )}
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {/* Header */}
+        <header className="h-16 border-b border-border bg-background flex items-center justify-between px-4 lg:px-6 flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              onClick={() => setIsMobileOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <h1 className="text-lg font-semibold">HR Management System</h1>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" aria-label="Notifications">
+              <Bell className="h-5 w-5" />
+            </Button>
+            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
+              <User className="h-4 w-4 text-primary-foreground" />
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content Area */}
+        <main ref={mainContentRef} className="flex-1 overflow-y-auto overflow-x-hidden bg-background p-4 lg:p-6 min-w-0">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}

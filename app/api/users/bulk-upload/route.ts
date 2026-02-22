@@ -19,6 +19,92 @@ const userRowSchema = z.object({
 });
 
 /**
+ * Safely extract text value from Excel cell
+ * Uses ExcelJS's text property first, then falls back to value extraction
+ */
+function getCellValue(cell: any): string {
+  if (!cell) {
+    return '';
+  }
+
+  // First, try ExcelJS's built-in text property (most reliable)
+  if (cell.text !== undefined && cell.text !== null) {
+    return String(cell.text).trim();
+  }
+
+  // If text is not available, try the value property
+  let value = cell.value;
+  
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  // Handle RichText objects (ExcelJS RichText format)
+  if (typeof value === 'object' && value !== null) {
+    // Check for RichText array
+    if (Array.isArray(value.richText)) {
+      return value.richText.map((rt: any) => rt.text || '').join('').trim();
+    }
+    
+    // Check for formula result
+    if (value.formula && value.result !== undefined) {
+      value = value.result;
+    }
+    
+    // Check for text property in the value object
+    if (value.text !== undefined) {
+      return String(value.text).trim();
+    }
+    
+    // Check if it's a Date object
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    
+    // If it's still an object, try to get text representation
+    if (typeof value === 'object' && value.constructor === Object) {
+      // Try common properties
+      if (value.value !== undefined) {
+        value = value.value;
+      } else if (value.result !== undefined) {
+        value = value.result;
+      } else {
+        // Log for debugging
+        console.warn('[Bulk Upload] Cell value is an object, trying toString:', JSON.stringify(value));
+        // Try toString on the object itself
+        try {
+          return String(value).trim();
+        } catch {
+          return '';
+        }
+      }
+    }
+  }
+
+  // Handle primitive types
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  
+  if (typeof value === 'number') {
+    return value.toString();
+  }
+  
+  if (typeof value === 'boolean') {
+    return value.toString();
+  }
+
+  // Final fallback
+  try {
+    const str = String(value);
+    return str.trim();
+  } catch (e) {
+    console.error('[Bulk Upload] Error converting cell value to string:', e, value);
+    return '';
+  }
+}
+
+/**
  * POST /api/users/bulk-upload
  * Upload Excel file to create multiple users
  */
@@ -80,32 +166,83 @@ export async function POST(request: NextRequest) {
       const row = worksheet.getRow(i);
       
       // Skip empty rows
-      if (!row.getCell(1).value) {
+      if (!getCellValue(row.getCell(1))) {
         continue;
       }
 
       results.total++;
 
       try {
-        // Extract row data
+        // Extract row data using safe cell value extraction
+        // Force string conversion immediately to prevent object issues
+        const name = String(getCellValue(row.getCell(1))).trim();
+        const email = String(getCellValue(row.getCell(2))).trim();
+        const password = String(getCellValue(row.getCell(3))).trim();
+        const staff_number = getCellValue(row.getCell(4)).trim() || undefined;
+        const charge_code = getCellValue(row.getCell(5)).trim() || undefined;
+        const primary_location_id = getCellValue(row.getCell(6)).trim() || undefined;
+        const manager_email = getCellValue(row.getCell(7)).trim() || undefined;
+        const status = (getCellValue(row.getCell(8)).trim() || 'active') as 'active' | 'suspended';
+
+        // Debug logging for troubleshooting - log raw cell values too
+        const cell2 = row.getCell(2);
+        console.log(`[Bulk Upload] Row ${i} debug:`, {
+          cell2Raw: cell2?.value,
+          cell2Text: cell2?.text,
+          cell2Type: typeof cell2?.value,
+          cell2Constructor: cell2?.value?.constructor?.name,
+          extractedEmail: email,
+          extractedEmailType: typeof email,
+          extractedName: name,
+          allCells: {
+            cell1: { 
+              value: row.getCell(1)?.value, 
+              text: row.getCell(1)?.text,
+              type: typeof row.getCell(1)?.value 
+            },
+            cell2: { 
+              value: row.getCell(2)?.value, 
+              text: row.getCell(2)?.text,
+              type: typeof row.getCell(2)?.value 
+            },
+            cell3: { 
+              value: row.getCell(3)?.value, 
+              text: row.getCell(3)?.text,
+              type: typeof row.getCell(3)?.value 
+            },
+          },
+        });
+
         const rowData: any = {
-          name: row.getCell(1).value?.toString() || '',
-          email: row.getCell(2).value?.toString() || '',
-          password: row.getCell(3).value?.toString() || '',
-          staff_number: row.getCell(4).value?.toString() || undefined,
-          charge_code: row.getCell(5).value?.toString() || undefined,
-          primary_location_id: row.getCell(6).value?.toString() || undefined,
-          manager_email: row.getCell(7).value?.toString() || undefined,
-          status: (row.getCell(8).value?.toString() || 'active') as 'active' | 'suspended',
+          name,
+          email,
+          password,
+          staff_number,
+          charge_code,
+          primary_location_id,
+          manager_email,
+          status,
         };
 
         // Validate row data
         const validationResult = userRowSchema.safeParse(rowData);
         if (!validationResult.success) {
+          // Ensure email is a string for error reporting
+          let emailForError = email;
+          if (typeof emailForError !== 'string') {
+            emailForError = String(emailForError) || 'unknown';
+          }
+          
           results.errors.push({
             row: i,
-            email: rowData.email,
+            email: emailForError,
             errors: validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`),
+          });
+          
+          console.error(`[Bulk Upload] Row ${i} validation failed:`, {
+            extractedValues: { name, email, password: password ? '***' : '' },
+            validationErrors: validationResult.error.issues,
+            rawRowData: rowData,
           });
           continue;
         }
@@ -214,7 +351,7 @@ export async function POST(request: NextRequest) {
       } catch (error: any) {
         results.errors.push({
           row: i,
-          email: row.getCell(2).value?.toString() || 'unknown',
+          email: getCellValue(row.getCell(2)) || 'unknown',
           errors: [error.message || 'Unknown error'],
         });
       }

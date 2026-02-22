@@ -35,25 +35,40 @@ export async function GET(request: NextRequest) {
     const workbook = new Workbook();
     const worksheet = workbook.addWorksheet('Users');
 
-    // Define columns
-    worksheet.columns = [
-      { header: 'Name', key: 'name', width: 30 },
-      { header: 'Email', key: 'email', width: 30 },
-      { header: 'Password', key: 'password', width: 20 },
-      { header: 'Staff Number', key: 'staff_number', width: 15 },
-      { header: 'Charge Code', key: 'charge_code', width: 15 },
-      { header: 'Primary Location ID', key: 'primary_location_id', width: 25 },
-      { header: 'Manager Email', key: 'manager_email', width: 30 },
-      { header: 'Status', key: 'status', width: 15 },
-    ];
+           // Define columns with proper formatting
+           worksheet.columns = [
+             { header: 'Name', key: 'name', width: 30 },
+             { header: 'Email', key: 'email', width: 30 },
+             { header: 'Password', key: 'password', width: 20 },
+             { header: 'Staff Number', key: 'staff_number', width: 15 },
+             { header: 'Charge Code', key: 'charge_code', width: 15 },
+             { header: 'Primary Location ID', key: 'primary_location_id', width: 25 },
+             { header: 'Manager Email', key: 'manager_email', width: 30 },
+             { header: 'Status', key: 'status', width: 15 },
+           ];
 
-    // Style header row
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFE0E0E0' },
-    };
+           // Set column protection - make all columns editable
+           worksheet.columns.forEach((column, index) => {
+             if (column.key) {
+               worksheet.getColumn(index + 1).protection = {
+                 locked: false,
+               };
+             }
+           });
+
+           // Style header row
+           const headerRow = worksheet.getRow(1);
+           headerRow.font = { bold: true, size: 11 };
+           headerRow.fill = {
+             type: 'pattern',
+             pattern: 'solid',
+             fgColor: { argb: 'FFE0E0E0' },
+           };
+           headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+           headerRow.height = 20;
+
+           // Ensure worksheet is NOT protected (allows full editing)
+           // Don't call protect() - we want the worksheet to be fully editable
 
     // Add example row
     worksheet.addRow({
