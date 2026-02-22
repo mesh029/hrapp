@@ -20,7 +20,19 @@ export async function GET(
     }
 
     // Check permission
-    const hasPermission = await checkPermission(user.id, 'timesheets.read', null);
+    // Check permission
+    const userWithLocation_hasPermission = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId_hasPermission = userWithLocation_hasPermission?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId_hasPermission) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    const hasPermission = await checkPermission(user, 'timesheets.read', { locationId: locationId_hasPermission });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
@@ -36,6 +48,8 @@ export async function GET(
             email: true,
             name: true,
             staff_type: true,
+            staff_number: true,
+            charge_code: true,
           },
         },
         location: {
@@ -87,7 +101,8 @@ export async function GET(
     }
 
     // Check if user can access this timesheet
-    if (!(await checkPermission(user.id, 'system.admin', null)) && timesheet.user_id !== user.id) {
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
+    if (!isAdmin && timesheet.user_id !== user.id) {
       return errorResponse('Forbidden: You can only access your own timesheets', 403);
     }
 

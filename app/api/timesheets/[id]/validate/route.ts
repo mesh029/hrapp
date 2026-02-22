@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
+import { prisma } from '@/lib/db';
 import { checkPermission } from '@/lib/middleware/permissions';
 import { validateTimesheet } from '@/lib/services/timesheet-validation';
 import { uuidSchema } from '@/lib/utils/validation';
@@ -20,7 +21,19 @@ export async function GET(
     }
 
     // Check permission
-    const hasPermission = await checkPermission(user.id, 'timesheets.read', null);
+    // Check permission
+    const userWithLocation_hasPermission = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId_hasPermission = userWithLocation_hasPermission?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId_hasPermission) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    const hasPermission = await checkPermission(user, 'timesheets.read', { locationId: locationId_hasPermission });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }

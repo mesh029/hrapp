@@ -76,3 +76,8 @@ export async function hasPermission(
     return false;
   }
 }
+
+/**
+ * Alias for hasPermission (for backward compatibility)
+ */
+export const checkPermission = hasPermission;

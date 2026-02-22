@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return successResponse(leaveType, 201);
+    return successResponse(leaveType, undefined, 201);
   } catch (error: any) {
     console.error('Create leave type error:', error);
     if (error.message.includes('Unauthorized')) {

@@ -9,8 +9,8 @@ const { Decimal } = Prisma;
 export async function getWorkHoursConfig(
   staffTypeId: string | null,
   locationId: string | null
-): Promise<Map<number, Decimal>> {
-  const configMap = new Map<number, Decimal>();
+): Promise<Map<number, Prisma.Decimal>> {
+  const configMap = new Map<number, Prisma.Decimal>();
 
   // Priority 1: Location-specific configuration (highest priority)
   if (locationId) {

@@ -21,7 +21,19 @@ export async function PATCH(
     }
 
     // Check permission
-    const hasPermission = await checkPermission(user.id, 'timesheets.update', null);
+    // Check permission
+    const userWithLocation_hasPermission = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId_hasPermission = userWithLocation_hasPermission?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId_hasPermission) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    const hasPermission = await checkPermission(user, 'timesheets.update', { locationId: locationId_hasPermission });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
@@ -40,7 +52,12 @@ export async function PATCH(
     }
 
     // Check if user can update this timesheet
-    if (!(await checkPermission(user.id, 'system.admin', null)) && timesheet.user_id !== user.id) {
+    const adminCheckLocation = userWithLocation_hasPermission?.primary_location_id || locationId_hasPermission || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    if (!adminCheckLocation) {
+      return errorResponse('No location available for permission check', 400);
+    }
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId: adminCheckLocation });
+    if (!isAdmin && timesheet.user_id !== user.id) {
       return errorResponse('Forbidden: You can only update your own timesheets', 403);
     }
 

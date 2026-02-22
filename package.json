@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "verify:setup": "tsx scripts/verify-setup.ts",
+    "prebuild": "npm run verify:setup",
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
@@ -12,8 +14,21 @@
     "db:studio": "prisma studio",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "check:permissions": "tsx scripts/check-permission-api-usage.ts",
+    "fix:permissions": "tsx scripts/fix-permission-calls.ts",
     "test:timesheet": "tsx scripts/test-timesheet-scenarios.ts",
-    "test:delegation": "tsx scripts/test-delegation.ts"
+    "test:delegation": "tsx scripts/test-delegation.ts",
+    "test:phase8": "tsx scripts/test-phase8.ts",
+    "test:integration": "tsx scripts/test-integration.ts",
+    "test:adaptability": "tsx scripts/test-system-adaptability.ts",
+    "test:phase1": "tsx scripts/test-phase1.ts",
+    "test:phase1-api": "tsx scripts/test-phase1-api.ts",
+    "test:phase2-baseline": "tsx scripts/test-path-story-baseline.ts",
+    "test:phase3-5step": "tsx scripts/test-phase3-5step-leave.ts",
+    "test:phase4-casual": "tsx scripts/test-phase4-casual-employee.ts",
+    "test:phase4-robust": "tsx scripts/test-phase4-robust-workflows.ts",
+    "test:phase5-laundry": "tsx scripts/test-phase5-laundry-worker.ts",
+    "test:phase6-integration": "tsx scripts/test-phase6-integration.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.1",
@@ -25,6 +40,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "exceljs": "^4.4.0",
     "ioredis": "^5.9.3",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.575.0",
@@ -40,6 +56,7 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/exceljs": "^0.5.3",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",

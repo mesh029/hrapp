@@ -20,8 +20,20 @@ export async function GET(
     }
 
     // Check permission
-    const hasPermission = await requirePermission(request, user.id, 'delegations.read');
-    if (!hasPermission) {
+    const userWithLocation = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    try {
+      await requirePermission(user, 'delegations.read', { locationId });
+    } catch {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 
@@ -96,8 +108,20 @@ export async function DELETE(
     }
 
     // Check permission
-    const hasPermission = await requirePermission(request, user.id, 'delegations.delete');
-    if (!hasPermission) {
+    const userWithLocation = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    try {
+      await requirePermission(user, 'delegations.delete', { locationId });
+    } catch {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 

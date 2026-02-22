@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return successResponse(config, 201);
+    return successResponse(config, undefined, 201);
   } catch (error: any) {
     console.error('Create work hours config error:', error);
     if (error.message.includes('Unauthorized')) {

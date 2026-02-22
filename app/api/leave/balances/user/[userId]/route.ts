@@ -66,7 +66,7 @@ export async function GET(
     // Check if user exists
     const targetUser = await prisma.user.findUnique({
       where: { id: params.userId },
-      select: { id: true, name: true, email: true },
+      select: { id: true, name: true, email: true, deleted_at: true },
     });
 
     if (!targetUser || targetUser.deleted_at) {

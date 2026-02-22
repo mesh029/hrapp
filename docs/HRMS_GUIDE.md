@@ -93,6 +93,19 @@
 
 ---
 
+### ⚙️ Setup Requirements
+**File:** [`SETUP_REQUIREMENTS.md`](./SETUP_REQUIREMENTS.md)  
+**Purpose:** Critical setup requirements to prevent import and path resolution issues  
+**Use When:** Setting up project, before building/deploying, troubleshooting import errors  
+**Contains:**
+- Required files and configurations
+- Path mapping requirements
+- Setup verification script
+- Pre-deployment checklist
+- Troubleshooting guide
+
+---
+
 ### 🛠️ Implementation Guide
 **File:** [`COMPREHENSIVE_IMPLEMENTATION_GUIDE.md`](./COMPREHENSIVE_IMPLEMENTATION_GUIDE.md)  
 **Purpose:** Strategic phased implementation plan with flow and direction  

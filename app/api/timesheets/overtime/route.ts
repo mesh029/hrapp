@@ -4,7 +4,8 @@ import { checkPermission } from '@/lib/middleware/permissions';
 import { createOvertimeRequestSchema, uuidSchema } from '@/lib/utils/validation';
 import { successResponse, errorResponse } from '@/lib/utils/responses';
 import { prisma } from '@/lib/db';
-import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
+const Decimal = Prisma.Decimal;
 
 /**
  * POST /api/timesheets/overtime
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create request
-    const request = await prisma.overtimeRequest.create({
+    const overtimeRequest = await prisma.overtimeRequest.create({
       data: {
         timesheet_id: validated.timesheet_id,
         entry_date: new Date(validated.entry_date),
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return successResponse(request, 'Overtime request created successfully', 201);
+    return successResponse(overtimeRequest, 'Overtime request created successfully', 201);
   } catch (error: any) {
     if (error.name === 'ZodError') {
       return errorResponse('Validation error: ' + error.errors[0].message, 400);

@@ -3,8 +3,9 @@ import { authenticate } from '@/lib/middleware/auth';
 import { requirePermission } from '@/lib/middleware/permissions';
 import { prisma } from '@/lib/db';
 import { successResponse, errorResponse, unauthorizedResponse } from '@/lib/utils/responses';
-import { allocateLeaveBalanceSchema } from '@/lib/utils/validation';
-import { allocateLeaveDays, validateLeaveBalance } from '@/lib/services/leave-balance';
+import { allocateLeaveBalanceSchema, uuidSchema } from '@/lib/utils/validation';
+import { allocateLeaveDays } from '@/lib/services/leave-balance';
+import { validateLeaveBalance } from '@/lib/services/leave-validation';
 
 /**
  * POST /api/leave/balances/allocate

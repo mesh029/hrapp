@@ -6,7 +6,8 @@ import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse 
 import { updateLeaveRequestSchema, uuidSchema } from '@/lib/utils/validation';
 import { validateLeaveRequest } from '@/lib/services/leave-validation';
 import { calculateDaysBetween } from '@/lib/services/leave-balance';
-import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
+const Decimal = Prisma.Decimal;
 
 /**
  * GET /api/leave/requests/[id]
@@ -71,6 +72,8 @@ export async function GET(
             id: true,
             name: true,
             email: true,
+            staff_number: true,
+            charge_code: true,
           },
         },
         leave_type: {
@@ -238,6 +241,8 @@ export async function PATCH(
             id: true,
             name: true,
             email: true,
+            staff_number: true,
+            charge_code: true,
           },
         },
         leave_type: {

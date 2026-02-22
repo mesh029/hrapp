@@ -14,6 +14,8 @@ const updateUserSchema = z.object({
   status: z.enum(['active', 'suspended', 'deactivated']).optional(),
   primary_location_id: z.string().uuid().nullable().optional(),
   manager_id: z.string().uuid().nullable().optional(), // Optional manager assignment
+  staff_number: z.string().nullable().optional(), // Optional unique staff number
+  charge_code: z.string().nullable().optional(), // Optional charge code
 });
 
 /**
@@ -56,6 +58,8 @@ export async function GET(
         status: true,
         primary_location_id: true,
         deleted_at: true,
+        staff_number: true,
+        charge_code: true,
         primary_location: {
           select: {
             id: true,
@@ -158,6 +162,38 @@ export async function PATCH(
       }
     }
 
+    // Prepare update data
+    const updateData: any = {};
+
+    // If updating staff_number, check for conflicts
+    if (validation.data.staff_number !== undefined && validation.data.staff_number !== existing.staff_number) {
+      if (validation.data.staff_number === null) {
+        // Allow removing staff_number
+        updateData.staff_number = null;
+      } else {
+        const staffNumberConflict = await prisma.user.findUnique({
+          where: { staff_number: validation.data.staff_number },
+        });
+
+        if (staffNumberConflict) {
+          return errorResponse('User with this staff number already exists', 409);
+        }
+        updateData.staff_number = validation.data.staff_number;
+      }
+    }
+    if (validation.data.name) updateData.name = validation.data.name;
+    if (validation.data.email) updateData.email = validation.data.email;
+    if (validation.data.status) updateData.status = validation.data.status;
+    if (validation.data.primary_location_id !== undefined) {
+      updateData.primary_location_id = validation.data.primary_location_id;
+    }
+    if (validation.data.password) {
+      updateData.password_hash = await hashPassword(validation.data.password);
+    }
+    if (validation.data.charge_code !== undefined) {
+      updateData.charge_code = validation.data.charge_code;
+    }
+
     // Validate manager if provided
     if (validation.data.manager_id !== undefined) {
       if (validation.data.manager_id === null) {
@@ -187,18 +223,6 @@ export async function PATCH(
       }
     }
 
-    // Prepare update data
-    const updateData: any = {};
-    if (validation.data.name) updateData.name = validation.data.name;
-    if (validation.data.email) updateData.email = validation.data.email;
-    if (validation.data.status) updateData.status = validation.data.status;
-    if (validation.data.primary_location_id !== undefined) {
-      updateData.primary_location_id = validation.data.primary_location_id;
-    }
-    if (validation.data.password) {
-      updateData.password_hash = await hashPassword(validation.data.password);
-    }
-
     const updatedUser = await prisma.user.update({
       where: { id: params.id },
       data: updateData,
@@ -209,6 +233,8 @@ export async function PATCH(
         status: true,
         primary_location_id: true,
         manager_id: true,
+        staff_number: true,
+        charge_code: true,
         manager: {
           select: {
             id: true,

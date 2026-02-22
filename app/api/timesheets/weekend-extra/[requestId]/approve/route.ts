@@ -4,6 +4,8 @@ import { checkPermission } from '@/lib/middleware/permissions';
 import { approveWeekendExtraSchema, uuidSchema } from '@/lib/utils/validation';
 import { successResponse, errorResponse } from '@/lib/utils/responses';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
+const { Decimal } = Prisma;
 
 /**
  * POST /api/timesheets/weekend-extra/:requestId/approve
@@ -20,7 +22,19 @@ export async function POST(
     }
 
     // Check permission (managers or timesheet approvers)
-    const hasPermission = await checkPermission(user.id, 'timesheets.approve', null);
+    // Check permission
+    const userWithLocation_hasPermission = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId_hasPermission = userWithLocation_hasPermission?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId_hasPermission) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    const hasPermission = await checkPermission(user, 'timesheets.approve', { locationId: locationId_hasPermission });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }

@@ -223,7 +223,10 @@ export async function resolveApprovers(
             role_permissions: {
               some: {
                 permission: {
-                  name: step.required_permission,
+                  OR: [
+                    { id: step.required_permission },
+                    { name: step.required_permission },
+                  ],
                 },
               },
             },
@@ -319,10 +322,40 @@ export async function approveWorkflowStep(params: WorkflowActionParams): Promise
     throw new Error('Current workflow step not found');
   }
 
+  // Get permission name - required_permission can be either an ID or a name
+  // Check if it's a UUID (ID) or a string (name)
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentStep.required_permission);
+  
+  let permissionName: string;
+  if (isUUID) {
+    // It's an ID, look it up
+    const permission = await prisma.permission.findUnique({
+      where: { id: currentStep.required_permission },
+      select: { name: true },
+    });
+
+    if (!permission) {
+      throw new Error('Permission not found for workflow step');
+    }
+    permissionName = permission.name;
+  } else {
+    // It's already a name, use it directly
+    permissionName = currentStep.required_permission;
+    
+    // Verify the permission exists
+    const permission = await prisma.permission.findFirst({
+      where: { name: permissionName },
+    });
+
+    if (!permission) {
+      throw new Error(`Permission "${permissionName}" not found for workflow step`);
+    }
+  }
+
   // Check authority
   const authority = await checkAuthority({
     userId,
-    permission: currentStep.required_permission,
+    permission: permissionName,
     locationId,
     workflowStepOrder: instance.current_step_order,
     workflowInstanceId: instanceId,
@@ -787,7 +820,16 @@ export async function adjustWorkflowStep(params: WorkflowActionParams): Promise<
     });
 
     // Notify requester
-    await NotificationHelpers.notifyWorkflowComplete(
+    // Type assertion needed: TypeScript infers method type incorrectly from object literal
+    const notifyComplete = NotificationHelpers.notifyWorkflowComplete as (
+      requesterId: string,
+      workflowInstanceId: string,
+      resourceType: string,
+      resourceId: string,
+      status: 'Approved' | 'Declined' | 'Adjusted'
+    ) => Promise<any>;
+    
+    await notifyComplete(
       instance.created_by,
       instanceId,
       instance.resource_type,

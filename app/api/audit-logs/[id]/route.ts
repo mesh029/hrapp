@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
 import { requirePermission } from '@/lib/middleware/permissions';
+import { prisma } from '@/lib/db';
 import { successResponse, errorResponse } from '@/lib/utils/responses';
 import { getAuditLogById } from '@/lib/services/audit';
 
@@ -19,8 +20,20 @@ export async function GET(
     }
 
     // Check permission (admin only)
-    const hasPermission = await requirePermission(request, user.id, 'audit.read');
-    if (!hasPermission) {
+    const userWithLocation = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    try {
+      await requirePermission(user, 'audit.read', { locationId });
+    } catch {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 

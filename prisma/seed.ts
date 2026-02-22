@@ -207,19 +207,21 @@ async function main() {
   const createdLocations = [];
   for (const locData of locations) {
     // Check if location exists
-    const existing = await prisma.location.findFirst({
+    let location = await prisma.location.findFirst({
       where: { name: locData.name },
     });
 
-    const location = existing || await prisma.location.create({
-      data: {
-        name: locData.name,
-        parent_id: null,
-        path: `${createdLocations.length + 1}`,
-        level: 0,
-        status: 'active',
-      },
-    });
+    if (!location) {
+      location = await prisma.location.create({
+        data: {
+          name: locData.name,
+          parent_id: null,
+          path: `${createdLocations.length + 1}`,
+          level: 0,
+          status: 'active',
+        },
+      });
+    }
     createdLocations.push(location);
   }
 
@@ -231,6 +233,8 @@ async function main() {
     { code: 'regular', name: 'Regular Staff', description: 'Regular full-time staff' },
     { code: 'temporary', name: 'Temporary Staff', description: 'Temporary staff' },
     { code: 'hrh', name: 'HRH Staff', description: 'Human Resources for Health staff' },
+    { code: 'casual', name: 'Casual Employee', description: 'Casual staff who can work weekends' },
+    { code: 'laundry_worker', name: 'Laundry Worker', description: 'Laundry workers with 4-day work week' },
   ];
 
   const createdStaffTypes = [];
@@ -249,6 +253,8 @@ async function main() {
   const hrhStaffType = createdStaffTypes.find((st) => st.code === 'hrh');
   const regularStaffType = createdStaffTypes.find((st) => st.code === 'regular');
   const tempStaffType = createdStaffTypes.find((st) => st.code === 'temporary');
+  const casualStaffType = createdStaffTypes.find((st) => st.code === 'casual');
+  const laundryWorkerStaffType = createdStaffTypes.find((st) => st.code === 'laundry_worker');
 
   if (hrhStaffType) {
     // HRH: Mon-Fri 8 hours/day
@@ -260,17 +266,18 @@ async function main() {
       { day: 5, hours: 8 }, // Friday
     ];
     for (const dayConfig of hrhDays) {
-      const existing = await prisma.workHoursConfig.findFirst({
-        where: {
-          staff_type_id: hrhStaffType.id,
-          location_id: null,
-          day_of_week: dayConfig.day,
-        },
-      });
+      const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM work_hours_configs 
+        WHERE staff_type_id = ${hrhStaffType.id} 
+        AND location_id IS NULL 
+        AND day_of_week = ${dayConfig.day}
+        AND deleted_at IS NULL
+        LIMIT 1
+      `;
 
-      if (existing) {
+      if (existing.length > 0) {
         await prisma.workHoursConfig.update({
-          where: { id: existing.id },
+          where: { id: existing[0].id },
           data: { hours: dayConfig.hours, is_active: true },
         });
       } else {
@@ -281,7 +288,7 @@ async function main() {
             day_of_week: dayConfig.day,
             hours: dayConfig.hours,
             is_active: true,
-          },
+          } as any,
         });
       }
     }
@@ -299,17 +306,18 @@ async function main() {
     ];
     for (const staffType of [regularStaffType, tempStaffType]) {
       for (const dayConfig of regularDays) {
-        const existing = await prisma.workHoursConfig.findFirst({
-          where: {
-            staff_type_id: staffType.id,
-            location_id: null,
-            day_of_week: dayConfig.day,
-          },
-        });
+        const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM work_hours_configs 
+          WHERE staff_type_id = ${staffType.id} 
+          AND location_id IS NULL 
+          AND day_of_week = ${dayConfig.day}
+          AND deleted_at IS NULL
+          LIMIT 1
+        `;
 
-        if (existing) {
+        if (existing.length > 0) {
           await prisma.workHoursConfig.update({
-            where: { id: existing.id },
+            where: { id: existing[0].id },
             data: { hours: dayConfig.hours, is_active: true },
           });
         } else {
@@ -320,12 +328,89 @@ async function main() {
               day_of_week: dayConfig.day,
               hours: dayConfig.hours,
               is_active: true,
-            },
+            } as any,
           });
         }
       }
     }
     console.log('   ✅ Regular/Temporary: Mon-Thu 8.5 hours, Fri 6 hours');
+  }
+
+  if (casualStaffType) {
+    // Casual: Mon-Fri 8 hours/day (can work weekends)
+    const casualDays = [
+      { day: 1, hours: 8 }, // Monday
+      { day: 2, hours: 8 }, // Tuesday
+      { day: 3, hours: 8 }, // Wednesday
+      { day: 4, hours: 8 }, // Thursday
+      { day: 5, hours: 8 }, // Friday
+    ];
+    for (const dayConfig of casualDays) {
+      const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM work_hours_configs 
+        WHERE staff_type_id = ${casualStaffType.id} 
+        AND location_id IS NULL 
+        AND day_of_week = ${dayConfig.day}
+        AND deleted_at IS NULL
+        LIMIT 1
+      `;
+
+      if (existing.length > 0) {
+        await prisma.workHoursConfig.update({
+          where: { id: existing[0].id },
+          data: { hours: dayConfig.hours, is_active: true },
+        });
+      } else {
+        await prisma.workHoursConfig.create({
+          data: {
+            staff_type_id: casualStaffType.id,
+            location_id: null,
+            day_of_week: dayConfig.day,
+            hours: dayConfig.hours,
+            is_active: true,
+          } as any,
+        });
+      }
+    }
+    console.log('   ✅ Casual: Mon-Fri 8 hours/day (weekend work allowed)');
+  }
+
+  if (laundryWorkerStaffType) {
+    // Laundry Worker: 4-day work week (Mon-Thu, 8 hours/day = 32 hours/week)
+    const laundryDays = [
+      { day: 1, hours: 8 }, // Monday
+      { day: 2, hours: 8 }, // Tuesday
+      { day: 3, hours: 8 }, // Wednesday
+      { day: 4, hours: 8 }, // Thursday
+    ];
+    for (const dayConfig of laundryDays) {
+      const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM work_hours_configs 
+        WHERE staff_type_id = ${laundryWorkerStaffType.id} 
+        AND location_id IS NULL 
+        AND day_of_week = ${dayConfig.day}
+        AND deleted_at IS NULL
+        LIMIT 1
+      `;
+
+      if (existing.length > 0) {
+        await prisma.workHoursConfig.update({
+          where: { id: existing[0].id },
+          data: { hours: dayConfig.hours, is_active: true },
+        });
+      } else {
+        await prisma.workHoursConfig.create({
+          data: {
+            staff_type_id: laundryWorkerStaffType.id,
+            location_id: null,
+            day_of_week: dayConfig.day,
+            hours: dayConfig.hours,
+            is_active: true,
+          } as any,
+        });
+      }
+    }
+    console.log('   ✅ Laundry Worker: Mon-Thu 8 hours/day (4-day week, 32 hours/week)');
   }
 
   // 5. Create Admin User

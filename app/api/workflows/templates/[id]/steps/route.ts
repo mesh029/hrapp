@@ -105,7 +105,7 @@ export async function POST(
       },
     });
 
-    return successResponse(step, 201);
+    return successResponse(step, undefined, 201);
   } catch (error: any) {
     console.error('Create workflow step error:', error);
     if (error.message.includes('Unauthorized')) {

@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return successResponse(staffType, 201);
+    return successResponse(staffType, undefined, 201);
   } catch (error: any) {
     console.error('Create staff type error:', error);
     if (error.message.includes('Unauthorized')) {

@@ -88,13 +88,13 @@ export async function createTimesheet(data: {
   const entries: Array<{
     timesheet_id: string;
     date: Date;
-    work_hours: Decimal;
-    leave_hours: Decimal;
-    holiday_hours: Decimal;
-    weekend_extra_hours: Decimal;
-    overtime_hours: Decimal;
-    total_hours: Decimal;
-    expected_hours: Decimal;
+    work_hours: Prisma.Decimal;
+    leave_hours: Prisma.Decimal;
+    holiday_hours: Prisma.Decimal;
+    weekend_extra_hours: Prisma.Decimal;
+    overtime_hours: Prisma.Decimal;
+    total_hours: Prisma.Decimal;
+    expected_hours: Prisma.Decimal;
     leave_request_id: string | null;
     holiday_id: string | null;
     is_auto_added: boolean;

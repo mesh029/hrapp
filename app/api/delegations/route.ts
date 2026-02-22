@@ -19,8 +19,20 @@ export async function GET(request: NextRequest) {
     }
 
     // Check permission
-    const hasPermission = await requirePermission(request, user.id, 'delegations.read');
-    if (!hasPermission) {
+    const userWithLocation = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    try {
+      await requirePermission(user, 'delegations.read', { locationId });
+    } catch {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 
@@ -168,8 +180,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Check permission to create delegation
-    const hasPermission = await requirePermission(request, user.id, 'delegations.create');
-    if (!hasPermission) {
+    const userWithLocationForCreate = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationIdForCreate = userWithLocationForCreate?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationIdForCreate) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    try {
+      await requirePermission(user, 'delegations.create', { locationId: locationIdForCreate });
+    } catch {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 
@@ -253,7 +277,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return successResponse(delegation, 201);
+    return successResponse(delegation, undefined, 201);
   } catch (error: any) {
     console.error('Error creating delegation:', error);
     if (error.name === 'ZodError') {

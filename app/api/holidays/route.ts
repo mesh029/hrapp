@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
 import { checkPermission } from '@/lib/middleware/permissions';
+import { prisma } from '@/lib/db';
 import { getHolidays, createHoliday } from '@/lib/services/holiday';
 import { createHolidaySchema, paginationSchema } from '@/lib/utils/validation';
 import { successResponse, errorResponse } from '@/lib/utils/responses';
@@ -17,7 +18,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Check permission
-    const hasPermission = await checkPermission(user.id, 'holidays.read', null);
+    const userWithLocation = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    const hasPermission = await checkPermission(user, 'holidays.read', { locationId });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
@@ -25,7 +37,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
-    const locationId = searchParams.get('location_id');
+    const filterLocationId = searchParams.get('location_id');
 
     if (!startDate || !endDate) {
       return errorResponse('start_date and end_date query parameters are required', 400);
@@ -34,7 +46,7 @@ export async function GET(request: NextRequest) {
     const holidays = await getHolidays(
       new Date(startDate),
       new Date(endDate),
-      locationId ?? undefined
+      filterLocationId ?? undefined
     );
 
     return successResponse(holidays, 'Holidays retrieved successfully');
@@ -55,7 +67,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Check permission
-    const hasPermission = await checkPermission(user.id, 'holidays.create', null);
+    const userWithLocationForCreate = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationIdForCreate = userWithLocationForCreate?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationIdForCreate) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    const hasPermission = await checkPermission(user, 'holidays.create', { locationId: locationIdForCreate });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }

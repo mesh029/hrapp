@@ -6,7 +6,8 @@ import { successResponse, errorResponse, unauthorizedResponse } from '@/lib/util
 import { createLeaveRequestSchema, paginationSchema } from '@/lib/utils/validation';
 import { validateLeaveRequest } from '@/lib/services/leave-validation';
 import { calculateDaysBetween, addPendingDays } from '@/lib/services/leave-balance';
-import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
+const Decimal = Prisma.Decimal;
 
 /**
  * GET /api/leave/requests
@@ -108,6 +109,8 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               email: true,
+              staff_number: true,
+              charge_code: true,
             },
           },
           leave_type: {

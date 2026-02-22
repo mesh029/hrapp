@@ -20,7 +20,10 @@ A fully dynamic, multi-location HR management system with configurable workflows
 
 1. Read [`docs/HRMS_GUIDE.md`](./docs/HRMS_GUIDE.md) for complete documentation index
 2. Follow [`docs/COMPREHENSIVE_IMPLEMENTATION_GUIDE.md`](./docs/COMPREHENSIVE_IMPLEMENTATION_GUIDE.md) Phase 0 for setup
-3. Reference [`docs/SYSTEM_COMPASS.md`](./docs/SYSTEM_COMPASS.md) during development
+3. **Verify setup:** Run `npm run verify:setup` to check critical configurations
+4. Reference [`docs/SYSTEM_COMPASS.md`](./docs/SYSTEM_COMPASS.md) during development
+
+> ⚠️ **Important:** Before building or deploying, always run `npm run verify:setup` to ensure path mappings and required files are correct. See [`docs/SETUP_REQUIREMENTS.md`](./docs/SETUP_REQUIREMENTS.md) for details.
 
 ## 🛠️ Tech Stack
 

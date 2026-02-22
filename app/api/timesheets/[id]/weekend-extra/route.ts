@@ -4,7 +4,8 @@ import { checkPermission } from '@/lib/middleware/permissions';
 import { createWeekendExtraRequestSchema, uuidSchema } from '@/lib/utils/validation';
 import { successResponse, errorResponse } from '@/lib/utils/responses';
 import { prisma } from '@/lib/db';
-import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
+const Decimal = Prisma.Decimal;
 
 /**
  * POST /api/timesheets/:id/weekend-extra
@@ -53,7 +54,7 @@ export async function POST(
     }
 
     // Create request
-    const request = await prisma.weekendExtraRequest.create({
+    const weekendExtraRequest = await prisma.weekendExtraRequest.create({
       data: {
         timesheet_id: params.id,
         entry_date: new Date(validated.entry_date),
@@ -63,7 +64,7 @@ export async function POST(
       },
     });
 
-    return successResponse(request, 'Weekend extra request created successfully', 201);
+    return successResponse(weekendExtraRequest, 'Weekend extra request created successfully', 201);
   } catch (error: any) {
     if (error.name === 'ZodError') {
       return errorResponse('Validation error: ' + error.errors[0].message, 400);

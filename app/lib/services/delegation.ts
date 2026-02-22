@@ -210,7 +210,7 @@ export async function getActiveDelegationsForUser(
       if (del.location_id === options.locationId) {
         return true; // Exact match
       }
-      if (del.include_descendants) {
+      if (del.include_descendants && options.locationId) {
         // Check if locationId is a descendant
         return isDescendantOf(options.locationId, del.location_id);
       }

@@ -110,6 +110,8 @@ export async function POST(
             id: true,
             name: true,
             email: true,
+            staff_number: true,
+            charge_code: true,
           },
         },
         leave_type: {

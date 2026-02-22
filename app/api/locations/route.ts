@@ -65,8 +65,11 @@ export async function GET(request: NextRequest) {
 
     // If tree format requested, build tree structure
     if (tree) {
-      const locationMap = new Map(locations.map(loc => [loc.id, { ...loc, children: [] }]));
-      const roots: any[] = [];
+      type LocationNode = typeof locations[0] & { children: LocationNode[] };
+      const locationMap = new Map<string, LocationNode>(
+        locations.map(loc => [loc.id, { ...loc, children: [] as LocationNode[] }])
+      );
+      const roots: LocationNode[] = [];
 
       locations.forEach(loc => {
         const node = locationMap.get(loc.id)!;
@@ -135,7 +138,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate path and level
-    const path = await calculatePath(parent_id);
+    const path = await calculatePath(parent_id ?? null);
     const level = calculateLevel(path);
 
     // Create location

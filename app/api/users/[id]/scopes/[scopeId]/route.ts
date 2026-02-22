@@ -106,13 +106,13 @@ export async function PATCH(
 
     // Validate is_global and location_id logic
     const isGlobal = validation.data.is_global !== undefined ? validation.data.is_global : existing.is_global;
-    const locationId = validation.data.location_id !== undefined ? validation.data.location_id : existing.location_id;
+    const updatedLocationId = validation.data.location_id !== undefined ? validation.data.location_id : existing.location_id;
 
-    if (isGlobal && locationId) {
+    if (isGlobal && updatedLocationId) {
       return errorResponse('Cannot set both is_global and location_id', 400);
     }
 
-    if (!isGlobal && !locationId) {
+    if (!isGlobal && !updatedLocationId) {
       return errorResponse('Either is_global must be true or location_id must be provided', 400);
     }
 

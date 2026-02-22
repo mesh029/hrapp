@@ -22,7 +22,19 @@ export async function POST(
     }
 
     // Check permission
-    const hasPermission = await checkPermission(user.id, 'timesheets.submit', null);
+    // Check permission
+    const userWithLocation_hasPermission = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId_hasPermission = userWithLocation_hasPermission?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId_hasPermission) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    const hasPermission = await checkPermission(user, 'timesheets.submit', { locationId: locationId_hasPermission });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
@@ -42,7 +54,8 @@ export async function POST(
     }
 
     // Check if user can submit this timesheet
-    if (!(await checkPermission(user.id, 'system.admin', null)) && timesheet.user_id !== user.id) {
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
+    if (!isAdmin && timesheet.user_id !== user.id) {
       return errorResponse('Forbidden: You can only submit your own timesheets', 403);
     }
 
@@ -54,12 +67,13 @@ export async function POST(
     // Validate timesheet
     const { canSubmit, validation } = await canSubmitTimesheet(params.id);
     if (!canSubmit) {
+      const errorMessage = validation.notes.length > 0 
+        ? `Timesheet validation failed: ${validation.notes.join('; ')}`
+        : 'Timesheet validation failed';
       return errorResponse(
-        {
-          message: 'Timesheet validation failed',
-          validation,
-        },
-        400
+        errorMessage,
+        400,
+        { validation: [JSON.stringify(validation)] }
       );
     }
 
@@ -96,7 +110,7 @@ export async function POST(
 
     // Create workflow instance
     const { createWorkflowInstance } = await import('@/lib/services/workflow');
-    const workflowInstance = await createWorkflowInstance({
+    const workflowInstanceId = await createWorkflowInstance({
       templateId: template.id,
       resourceType: 'timesheet',
       resourceId: timesheet.id,
@@ -105,23 +119,32 @@ export async function POST(
     });
 
     // Submit workflow
-    await submitWorkflowInstance(workflowInstance.id, user.id);
+    const { submitWorkflowInstance } = await import('@/lib/services/workflow');
+    await submitWorkflowInstance(workflowInstanceId);
 
     // Update timesheet status
     await prisma.timesheet.update({
       where: { id: params.id },
       data: {
         status: 'Submitted',
-        workflow_instance_id: workflowInstance.id,
+        workflow_instance_id: workflowInstanceId,
       },
     });
 
     const updated = await prisma.timesheet.findUnique({
       where: { id: params.id },
       include: {
-        workflow_instance: {
-          include: {
-            current_step: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        location: {
+          select: {
+            id: true,
+            name: true,
           },
         },
       },

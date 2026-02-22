@@ -33,6 +33,38 @@ services:
       timeout: 5s
       retries: 5
 
+  # HR App API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hrapp-api
+    environment:
+      DATABASE_URL: postgresql://root:oneeyedragon@postgres:5432/hrapp_db?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_min_32_chars_change_in_production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-${JWT_SECRET}}
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - default
+    command: sh -c "npx prisma migrate deploy || true && node server.js"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   postgres_data:
   redis_data:

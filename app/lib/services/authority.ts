@@ -31,48 +31,7 @@ export async function checkAuthority(params: AuthorityCheckParams): Promise<{
     return { authorized: false, source: null };
   }
 
-  // 2. Check workflow step eligibility (if workflow context provided)
-  if (workflowInstanceId && workflowStepOrder !== undefined) {
-    const workflowInstance = await prisma.workflowInstance.findUnique({
-      where: { id: workflowInstanceId },
-      include: {
-        template: {
-          include: {
-            steps: {
-              where: { step_order: workflowStepOrder },
-              take: 1,
-            },
-          },
-        },
-      },
-    });
-
-    if (!workflowInstance) {
-      return { authorized: false, source: null };
-    }
-
-    const step = workflowInstance.template.steps[0];
-    if (!step || step.required_permission !== permission) {
-      return { authorized: false, source: null };
-    }
-
-    // Check if this is the current step
-    if (workflowInstance.current_step_order !== workflowStepOrder) {
-      return { authorized: false, source: null };
-    }
-  }
-
-  // 3. Check cache first
-  const cacheKey = `perms:${userId}:${locationId}`;
-  const cached = await redis.get(cacheKey);
-  if (cached) {
-    const cachedPerms = JSON.parse(cached);
-    if (cachedPerms.permissions.includes(permission)) {
-      return { authorized: true, source: 'direct' };
-    }
-  }
-
-  // 4. Get user roles
+  // 1.5. Check for system.admin permission (bypasses all other checks)
   const userRoles = await prisma.userRole.findMany({
     where: {
       user_id: userId,
@@ -94,7 +53,6 @@ export async function checkAuthority(params: AuthorityCheckParams): Promise<{
     },
   });
 
-  // 5. Extract permissions from roles
   const rolePermissions = new Set<string>();
   userRoles.forEach((ur) => {
     if (ur.role && ur.role.status === 'active') {
@@ -103,6 +61,74 @@ export async function checkAuthority(params: AuthorityCheckParams): Promise<{
       });
     }
   });
+
+  if (rolePermissions.has('system.admin')) {
+    return { authorized: true, source: 'direct' };
+  }
+
+  // 2. Check workflow step eligibility (if workflow context provided)
+  if (workflowInstanceId && workflowStepOrder !== undefined) {
+    const workflowInstance = await prisma.workflowInstance.findUnique({
+      where: { id: workflowInstanceId },
+      include: {
+        template: {
+          include: {
+            steps: {
+              where: { step_order: workflowStepOrder },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+
+    if (!workflowInstance) {
+      return { authorized: false, source: null };
+    }
+
+    const step = workflowInstance.template.steps[0];
+    if (!step) {
+      return { authorized: false, source: null };
+    }
+    
+    // Get permission name - required_permission can be either an ID or a name
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(step.required_permission);
+    let stepPermissionName: string;
+    
+    if (isUUID) {
+      const stepPermission = await prisma.permission.findUnique({
+        where: { id: step.required_permission },
+        select: { name: true },
+      });
+      if (!stepPermission) {
+        return { authorized: false, source: null };
+      }
+      stepPermissionName = stepPermission.name;
+    } else {
+      stepPermissionName = step.required_permission;
+    }
+    
+    if (stepPermissionName !== permission) {
+      return { authorized: false, source: null };
+    }
+
+    // Check if this is the current step
+    if (workflowInstance.current_step_order !== workflowStepOrder) {
+      return { authorized: false, source: null };
+    }
+  }
+
+  // 3. Check cache first
+  const cacheKey = `perms:${userId}:${locationId}`;
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    const cachedPerms = JSON.parse(cached);
+    if (cachedPerms.permissions.includes(permission)) {
+      return { authorized: true, source: 'direct' };
+    }
+  }
+
+  // 4. Extract permissions from roles (already done above for system.admin check)
 
   // 6. Check if user has permission at all
   if (!rolePermissions.has(permission)) {

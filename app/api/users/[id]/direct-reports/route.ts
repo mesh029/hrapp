@@ -84,6 +84,8 @@ export async function GET(
         email: true,
         status: true,
         primary_location_id: true,
+        staff_number: true,
+        charge_code: true,
         primary_location: {
           select: {
             id: true,

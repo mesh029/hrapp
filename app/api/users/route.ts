@@ -13,6 +13,8 @@ const createUserSchema = z.object({
   primary_location_id: z.string().uuid().optional(),
   manager_id: z.string().uuid().optional().nullable(), // Optional manager assignment
   status: z.enum(['active', 'suspended', 'deactivated']).optional().default('active'),
+  staff_number: z.string().optional().nullable(), // Optional unique staff number
+  charge_code: z.string().optional().nullable(), // Optional charge code
 });
 
 /**
@@ -75,6 +77,8 @@ export async function GET(request: NextRequest) {
           status: true,
           primary_location_id: true,
           manager_id: true,
+          staff_number: true,
+          charge_code: true,
           primary_location: {
             select: {
               id: true,
@@ -141,15 +145,26 @@ export async function POST(request: NextRequest) {
       return errorResponse('Validation failed', 400, validationResult.error.flatten().fieldErrors);
     }
 
-    const { name, email, password, primary_location_id, manager_id, status } = validationResult.data;
+    const { name, email, password, primary_location_id, manager_id, status, staff_number, charge_code } = validationResult.data;
 
     // Check if email already exists
-    const existing = await prisma.user.findUnique({
+    const existingEmail = await prisma.user.findUnique({
       where: { email },
     });
 
-    if (existing) {
+    if (existingEmail) {
       return errorResponse('User with this email already exists', 409);
+    }
+
+    // Check if staff_number already exists (if provided)
+    if (staff_number) {
+      const existingStaffNumber = await prisma.user.findUnique({
+        where: { staff_number },
+      });
+
+      if (existingStaffNumber) {
+        return errorResponse('User with this staff number already exists', 409);
+      }
     }
 
     // Validate manager if provided
@@ -180,6 +195,8 @@ export async function POST(request: NextRequest) {
         status,
         primary_location_id: primary_location_id || null,
         manager_id: manager_id || null,
+        staff_number: staff_number || null,
+        charge_code: charge_code || null,
       },
       select: {
         id: true,
@@ -188,6 +205,8 @@ export async function POST(request: NextRequest) {
         status: true,
         primary_location_id: true,
         manager_id: true,
+        staff_number: true,
+        charge_code: true,
         manager: {
           select: {
             id: true,

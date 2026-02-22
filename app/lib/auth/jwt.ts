@@ -76,24 +76,48 @@ export function verifyRefreshToken(token: string): TokenPayload {
  * Store refresh token in Redis
  */
 export async function storeRefreshToken(userId: string, token: string): Promise<void> {
-  const key = `refresh_token:${userId}`;
-  await redis.setex(key, JWT_REFRESH_EXPIRES_IN, token);
+  try {
+    const key = `refresh_token:${userId}`;
+    const redisInstance = redis as any;
+    if (redisInstance && typeof redisInstance.setex === 'function') {
+      await redisInstance.setex(key, JWT_REFRESH_EXPIRES_IN, token);
+    }
+  } catch (error: any) {
+    // Log but don't fail if Redis is unavailable
+    console.error('Failed to store refresh token in Redis:', error.message);
+  }
 }
 
 /**
  * Get refresh token from Redis
  */
 export async function getRefreshToken(userId: string): Promise<string | null> {
-  const key = `refresh_token:${userId}`;
-  return await redis.get(key);
+  try {
+    const key = `refresh_token:${userId}`;
+    const redisInstance = redis as any;
+    if (redisInstance && typeof redisInstance.get === 'function') {
+      return await redisInstance.get(key);
+    }
+    return null;
+  } catch (error: any) {
+    console.error('Failed to get refresh token from Redis:', error.message);
+    return null;
+  }
 }
 
 /**
  * Remove refresh token from Redis (logout)
  */
 export async function removeRefreshToken(userId: string): Promise<void> {
-  const key = `refresh_token:${userId}`;
-  await redis.del(key);
+  try {
+    const key = `refresh_token:${userId}`;
+    const redisInstance = redis as any;
+    if (redisInstance && typeof redisInstance.del === 'function') {
+      await redisInstance.del(key);
+    }
+  } catch (error: any) {
+    console.error('Failed to remove refresh token from Redis:', error.message);
+  }
 }
 
 /**

@@ -18,7 +18,19 @@ export async function GET(request: NextRequest) {
     }
 
     // Check permission
-    const hasPermission = await checkPermission(user.id, 'timesheets.read', null);
+    // Check permission
+    const userWithLocation_hasPermission = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId_hasPermission = userWithLocation_hasPermission?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId_hasPermission) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    const hasPermission = await checkPermission(user, 'timesheets.read', { locationId: locationId_hasPermission });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
@@ -34,7 +46,8 @@ export async function GET(request: NextRequest) {
     };
 
     // If not system admin, only show own timesheets or those they can manage
-    if (!(await checkPermission(user.id, 'system.admin', null))) {
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
+    if (!isAdmin) {
       where.user_id = user.id;
     } else if (userId) {
       where.user_id = userId;
@@ -53,6 +66,8 @@ export async function GET(request: NextRequest) {
               id: true,
               email: true,
               name: true,
+              staff_number: true,
+              charge_code: true,
             },
           },
           location: {
@@ -98,7 +113,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Check permission
-    const hasPermission = await checkPermission(user.id, 'timesheets.create', null);
+    // Check permission
+    const userWithLocation_hasPermission = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId_hasPermission = userWithLocation_hasPermission?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId_hasPermission) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    const hasPermission = await checkPermission(user, 'timesheets.create', { locationId: locationId_hasPermission });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }

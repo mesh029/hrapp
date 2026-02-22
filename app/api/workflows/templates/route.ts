@@ -236,7 +236,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return successResponse(createdTemplate, 201);
+    return successResponse(createdTemplate, undefined, 201);
   } catch (error: any) {
     console.error('Create workflow template error:', error);
     if (error.message.includes('Unauthorized')) {
