@@ -102,14 +102,23 @@ class ApiClient {
       }
     }
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ 
-        message: `HTTP ${response.status}` 
-      }));
-      throw new Error(error.message || `Request failed: ${response.status}`);
+    const responseData = await response.json().catch(() => ({ 
+      success: false,
+      message: `HTTP ${response.status}` 
+    }));
+
+    // For 404, 400, 403, and 405, return the error response structure instead of throwing
+    // This allows the frontend to check response.success
+    if (!response.ok && (response.status === 404 || response.status === 400 || response.status === 403 || response.status === 405)) {
+      return responseData as T;
     }
 
-    return response.json();
+    // For server errors (500+), still throw
+    if (!response.ok) {
+      throw new Error(responseData.message || `Request failed: ${response.status}`);
+    }
+
+    return responseData;
   }
 
   async get<T>(endpoint: string, options?: ApiRequestOptions): Promise<T> {

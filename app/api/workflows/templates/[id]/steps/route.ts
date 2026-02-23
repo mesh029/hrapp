@@ -102,6 +102,11 @@ export async function POST(
         required_permission: validation.data.required_permission,
         allow_decline: validation.data.allow_decline,
         allow_adjust: validation.data.allow_adjust,
+        approver_strategy: validation.data.approver_strategy || 'permission',
+        include_manager: validation.data.include_manager || false,
+        required_roles: validation.data.required_roles ? JSON.stringify(validation.data.required_roles) : null,
+        location_scope: validation.data.location_scope || 'same',
+        conditional_rules: validation.data.conditional_rules ? JSON.stringify(validation.data.conditional_rules) : null,
       },
     });
 

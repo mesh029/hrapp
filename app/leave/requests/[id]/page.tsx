@@ -8,7 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { useRouter, useParams } from 'next/navigation';
 import { leaveService, LeaveRequest } from '@/ui/src/services/leave';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
+import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
 import { useAuth } from '@/ui/src/contexts/auth-context';
+import { ApprovalTimeline, TimelineStep } from '@/components/workflows/ApprovalTimeline';
 import { Calendar, User, Clock, FileText, ArrowLeft } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
@@ -29,6 +31,11 @@ export default function LeaveRequestDetailPage() {
   const [request, setRequest] = React.useState<LeaveRequest | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isCancelling, setIsCancelling] = React.useState(false);
+  const [workflowTimeline, setWorkflowTimeline] = React.useState<{
+    has_workflow: boolean;
+    workflow_status?: string;
+    timeline: TimelineStep[];
+  } | null>(null);
 
   const requestId = params.id as string;
 
@@ -41,12 +48,34 @@ export default function LeaveRequestDetailPage() {
   const loadLeaveRequest = async () => {
     try {
       setIsLoading(true);
-      const response = await leaveService.getLeaveRequest(requestId);
-      if (response.success && response.data) {
-        setRequest(response.data);
+      const [requestResponse, workflowResponse] = await Promise.all([
+        leaveService.getLeaveRequest(requestId).catch(err => {
+          console.error('Failed to load leave request:', err);
+          return { success: false, data: null, message: err.message };
+        }),
+        leaveService.getLeaveRequestWorkflow(requestId).catch(err => {
+          console.error('Failed to load workflow:', err);
+          return { success: false, data: null };
+        }),
+      ]);
+      
+      if (requestResponse.success && requestResponse.data) {
+        setRequest(requestResponse.data);
+      } else {
+        console.error('Leave request not found or error:', requestResponse.message || 'Unknown error');
+        setRequest(null);
       }
-    } catch (error) {
+      
+      if (workflowResponse.success && workflowResponse.data) {
+        console.log('[Leave Request] Workflow data:', workflowResponse.data);
+        setWorkflowTimeline(workflowResponse.data);
+      } else {
+        console.log('[Leave Request] No workflow data or error:', workflowResponse);
+        setWorkflowTimeline({ has_workflow: false, timeline: [] });
+      }
+    } catch (error: any) {
       console.error('Failed to load leave request:', error);
+      setRequest(null);
     } finally {
       setIsLoading(false);
     }
@@ -78,9 +107,24 @@ export default function LeaveRequestDetailPage() {
     });
   };
 
-  const canEdit = request?.status === 'Draft' && features.canCreateLeave;
-  const canCancel = request?.status === 'Draft' && features.canCreateLeave;
-  const canApprove = request?.status === 'UnderReview' && features.canApproveLeave;
+  // Check if user can edit (must be Draft status and have edit permission)
+  const { isVisible: canEdit } = useComponentVisibility('leave.edit.action', {
+    fallbackPermission: 'leave.update',
+    fallbackCheck: (features) => request?.status === 'Draft' && features.canCreateLeave && !features.isAdmin,
+  });
+  
+  const { isVisible: canCancelAction } = useComponentVisibility('leave.cancel.action', {
+    fallbackPermission: 'leave.update',
+    fallbackCheck: (features) => request?.status === 'Draft' && features.canCreateLeave && !features.isAdmin,
+  });
+  
+  const { isVisible: canApproveAction } = useComponentVisibility('leave.approve.action', {
+    fallbackPermission: 'leave.approve',
+    fallbackCheck: (features) => request?.status === 'UnderReview' && features.canApproveLeave,
+  });
+  
+  const canCancel = canCancelAction;
+  const canApprove = canApproveAction;
 
   if (isLoading) {
     return (
@@ -215,15 +259,21 @@ export default function LeaveRequestDetailPage() {
               </Card>
             )}
 
-            {/* Timestamps */}
+            {/* Status History */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Clock className="h-5 w-5" />
-                  Timeline
+                  Status History
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Current Status</p>
+                  <Badge className={statusColors[request.status] || 'bg-gray-500'}>
+                    {request.status}
+                  </Badge>
+                </div>
                 <div>
                   <p className="text-muted-foreground">Created</p>
                   <p>{formatDate(request.created_at)}</p>
@@ -284,6 +334,12 @@ export default function LeaveRequestDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Approval Timeline */}
+        <ApprovalTimeline
+          timeline={workflowTimeline?.timeline || []}
+          workflowStatus={workflowTimeline?.workflow_status}
+        />
       </div>
     </MainLayout>
   );

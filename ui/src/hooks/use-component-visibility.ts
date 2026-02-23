@@ -104,14 +104,19 @@ export function useComponentVisibility(
       
       // Try to fetch admin-configured visibility
       try {
-        const response = await api.get(`/api/admin/component-visibility/user/${user.id}?componentId=${componentId}`);
+        const response = await api.get(`/api/admin/component-visibility/user/${user.id}`);
         
         if (response.success && response.data) {
           const data = response.data as any;
-          if (data.visible !== undefined) {
+          // Find config for this specific component
+          const componentConfig = data.visible_components?.find(
+            (comp: any) => comp.component_id === componentId
+          );
+          
+          if (componentConfig) {
             setConfig({
-              visible: data.visible,
-              enabled: data.enabled !== false, // Default to true if not specified
+              visible: componentConfig.visible,
+              enabled: componentConfig.enabled,
             });
             setSource('config');
             setIsLoading(false);

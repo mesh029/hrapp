@@ -76,21 +76,98 @@ All screens use `useDynamicUI()` hook:
 - `features.canApproveLeave` - Show approve/decline actions
 - Navigation automatically filters based on permissions
 
+### Completed Screens (Continued)
+- ✅ Leave Request Edit (`/leave/requests/[id]/edit`)
+  - Only allows editing Draft requests
+  - Uses `useComponentVisibility` for admin configuration
+  - Validates leave balance before updating
+  - Recalculates days on date changes
+
 ### Pending Screens
-- ⏳ Leave Request Edit (`/leave/requests/[id]/edit`)
-- ⏳ Leave Types Management (`/leave/types`)
+- ⏳ Leave Types Management (`/leave/types`) - Admin only
 - ⏳ Leave Balance Allocation (admin only)
 
 ---
 
-## Phase 2.3: Timesheet Management (PENDING)
+## Phase 2.3: Timesheet Management 🚧 (IN PROGRESS)
 
-### Planned Screens
-- ⏳ Timesheets List
-- ⏳ Create/Edit Timesheet
-- ⏳ Timesheet Detail View
-- ⏳ Timesheet Entry Management
-- ⏳ Overtime & Weekend Extra Requests
+### Completed Screens
+- ✅ Timesheets List (`/timesheets`)
+  - Dynamic filtering based on permissions
+  - Shows all timesheets if user has `timesheet.read` permission
+  - Shows only own timesheets if user can only create
+  - Create button only visible if user has `timesheet.create` permission
+  - Status filtering and search
+  - Pagination
+
+- ✅ Create Timesheet (`/timesheets/new`)
+  - Permission check before showing form
+  - Period date range selection
+  - Quick select buttons (Current Month, Last Month, Next Month)
+  - Automatic entry creation for all days in period
+
+- ✅ Timesheet Detail (`/timesheets/[id]`)
+  - View complete timesheet details
+  - Summary cards (Work Hours, Leave Hours, Holiday Hours, Overtime, Weekend Extra)
+  - Employee information (if user can view all)
+  - Period information
+  - Validation status before submission
+  - Timesheet entries table
+  - Edit/Submit actions based on permissions
+
+- ✅ Edit Timesheet Entries (`/timesheets/[id]/edit`)
+  - Only allows editing Draft timesheets
+  - Bulk update all entries
+  - Individual entry editing (work hours, leave hours, holiday hours, overtime, weekend extra, notes)
+  - Uses `useComponentVisibility` for admin configuration
+
+### Services Created
+- ✅ `timesheetService` - Complete API service for timesheet management
+  - `getTimesheets()` - List timesheets with filters
+  - `getTimesheet(id)` - Get single timesheet with entries
+  - `createTimesheet()` - Create new timesheet
+  - `updateTimesheetEntries()` - Bulk update entries
+  - `submitTimesheet()` - Submit for approval
+  - `validateTimesheet()` - Validate before submission
+
+### Dynamic Permission Features
+All screens use `useComponentVisibility()` hook:
+- `timesheet.list.view` - View timesheets list
+- `timesheet.create.button` - Show/hide create button
+- `timesheet.create.form` - Access create form
+- `timesheet.detail.view` - View timesheet details
+- `timesheet.edit.action` - Edit entries action
+- `timesheet.edit.form` - Access edit form
+- `timesheet.submit.action` - Submit for approval action
+
+### Additional Features Completed
+- ✅ Weekend Extra Request Form (`/timesheets/[id]/weekend-extra/new`)
+  - Request weekend extra hours for specific dates
+  - Weekend date validation
+  - Integrated with `useComponentVisibility` for admin configuration
+  
+- ✅ Overtime Request Form (`/timesheets/[id]/overtime/new`)
+  - Request overtime hours for specific dates
+  - Date and hours validation
+  - Integrated with `useComponentVisibility` for admin configuration
+
+- ✅ Pending Requests Management (`/timesheets/requests`)
+  - View all pending weekend extra and overtime requests
+  - Approve/decline requests with notes/reasons
+  - Permission-based access (requires `timesheet.approve`)
+  - Real-time updates after approval/decline actions
+
+### Service Updates
+- ✅ Added `requestWeekendExtra()` - Create weekend extra request
+- ✅ Added `requestOvertime()` - Create overtime request
+- ✅ Added `approveWeekendExtra()` - Approve weekend extra request
+- ✅ Added `declineWeekendExtra()` - Decline weekend extra request
+- ✅ Added `approveOvertime()` - Approve overtime request
+- ✅ Added `declineOvertime()` - Decline overtime request
+- ✅ Added `getPendingRequests()` - Get all pending requests for approvers
+
+### API Routes Created
+- ✅ `GET /api/timesheets/requests/pending` - List pending requests
 
 ---
 

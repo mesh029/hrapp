@@ -116,8 +116,8 @@ model User {
   direct_reports      User[]     @relation("UserManager")
   staff_type_id       String?
   staff_type          StaffType? @relation(fields: [staff_type_id], references: [id])
-  staff_number        String?   @unique // Unique identifier for tracking employees
-  charge_code         String?   // Where salary is charged to (editable)
+  staff_number        String?    @unique // Unique identifier for tracking employees
+  charge_code         String? // Where salary is charged to (editable)
   contract_start_date DateTime?  @db.Date
   contract_end_date   DateTime?  @db.Date
   contract_status     String? // "active", "expired", "unknown"
@@ -126,26 +126,30 @@ model User {
   updated_at          DateTime   @updatedAt
 
   // Relations
-  user_roles                          UserRole[]
-  user_scopes                         UserPermissionScope[]
-  delegations_as_delegator            Delegation[]             @relation("Delegator")
-  delegations_as_delegate             Delegation[]             @relation("Delegate")
-  workflow_instances_created          WorkflowInstance[]
-  workflow_step_instances_acted       WorkflowStepInstance[]
-  leave_requests                      LeaveRequest[]
-  leave_balances                      LeaveBalance[]
-  leave_balance_resets                LeaveBalanceReset[]
-  leave_balance_adjustments           LeaveBalanceAdjustment[]
-  leave_balance_resets_performed      LeaveBalanceReset[]      @relation("LeaveBalanceResetter")
-  leave_balance_adjustments_performed LeaveBalanceAdjustment[] @relation("LeaveBalanceAdjuster")
-  timesheets                          Timesheet[]
-  holidays_created                    Holiday[]
-  weekend_extra_requests_created      WeekendExtraRequest[]    @relation("WeekendExtraRequester")
-  weekend_extra_requests_approved     WeekendExtraRequest[]    @relation("WeekendExtraApprover")
-  overtime_requests_created           OvertimeRequest[]        @relation("OvertimeRequester")
-  overtime_requests_approved          OvertimeRequest[]        @relation("OvertimeApprover")
-  audit_logs                          AuditLog[]
-  notifications                       Notification[]
+  user_roles                           UserRole[]
+  user_scopes                          UserPermissionScope[]
+  delegations_as_delegator             Delegation[]                @relation("Delegator")
+  delegations_as_delegate              Delegation[]                @relation("Delegate")
+  workflow_instances_created           WorkflowInstance[]
+  workflow_step_instances_acted        WorkflowStepInstance[]
+  leave_requests                       LeaveRequest[]
+  leave_balances                       LeaveBalance[]
+  leave_balance_resets                 LeaveBalanceReset[]
+  leave_balance_adjustments            LeaveBalanceAdjustment[]
+  leave_balance_resets_performed       LeaveBalanceReset[]         @relation("LeaveBalanceResetter")
+  leave_balance_adjustments_performed  LeaveBalanceAdjustment[]    @relation("LeaveBalanceAdjuster")
+  timesheets                           Timesheet[]
+  holidays_created                     Holiday[]
+  weekend_extra_requests_created       WeekendExtraRequest[]       @relation("WeekendExtraRequester")
+  weekend_extra_requests_approved      WeekendExtraRequest[]       @relation("WeekendExtraApprover")
+  overtime_requests_created            OvertimeRequest[]           @relation("OvertimeRequester")
+  overtime_requests_approved           OvertimeRequest[]           @relation("OvertimeApprover")
+  audit_logs                           AuditLog[]
+  notifications                        Notification[]
+  category_assignments                 UserCategoryAssignment[]
+  category_assignments_created         UserCategoryAssignment[]    @relation("CategoryAssigner")
+  component_visibility_configs         ComponentVisibilityConfig[] @relation("ComponentVisibilityUser")
+  component_visibility_configs_created ComponentVisibilityConfig[] @relation("ComponentVisibilityCreator")
 
   @@index([status, deleted_at])
   @@index([primary_location_id])
@@ -181,8 +185,9 @@ model Role {
   created_at  DateTime   @default(now())
   updated_at  DateTime   @updatedAt
 
-  role_permissions RolePermission[]
-  user_roles       UserRole[]
+  role_permissions           RolePermission[]
+  user_roles                 UserRole[]
+  componentVisibilityConfigs ComponentVisibilityConfig[]
 
   @@index([status])
   @@map("roles")
@@ -316,12 +321,21 @@ model WorkflowStep {
   required_permission  String
   allow_decline        Boolean  @default(true)
   allow_adjust         Boolean  @default(false)
+  
+  // Approver Resolution Configuration
+  approver_strategy    String?  @default("permission") // "permission" | "manager" | "role" | "combined"
+  include_manager      Boolean  @default(false) // Include employee's manager as approver
+  required_roles       Json?    // Array of role IDs for role-based resolution
+  location_scope       String?  @default("same") // "same" | "parent" | "descendants" | "all"
+  conditional_rules    Json?    // Array of conditional routing rules
+  
   created_at           DateTime @default(now())
 
   template WorkflowTemplate @relation(fields: [workflow_template_id], references: [id], onDelete: Cascade)
 
   @@unique([workflow_template_id, step_order])
   @@index([required_permission])
+  @@index([approver_strategy])
   @@map("workflow_steps")
 }
 
@@ -751,4 +765,72 @@ model LeaveBalanceAdjustment {
   @@index([user_id, leave_type_id, year])
   @@index([adjusted_at])
   @@map("leave_balance_adjustments")
+}
+
+// Admin UI Configuration Models
+
+model UserCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  color       String? // For UI display (hex color)
+  priority    Int       @default(0) // Higher priority = more specific
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  assignments        UserCategoryAssignment[]
+  visibility_configs ComponentVisibilityConfig[]
+
+  @@index([name, deleted_at])
+  @@index([priority])
+  @@map("user_categories")
+}
+
+model UserCategoryAssignment {
+  id               String    @id @default(uuid())
+  user_id          String
+  user_category_id String
+  assigned_by      String
+  assigned_at      DateTime  @default(now())
+  expires_at       DateTime? // Optional expiration
+  notes            String?
+
+  user     User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  category UserCategory @relation(fields: [user_category_id], references: [id], onDelete: Cascade)
+  assigner User         @relation("CategoryAssigner", fields: [assigned_by], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, user_category_id])
+  @@index([user_id])
+  @@index([user_category_id])
+  @@index([expires_at])
+  @@map("user_category_assignments")
+}
+
+model ComponentVisibilityConfig {
+  id               String   @id @default(uuid())
+  component_id     String // e.g., "leave.create.button"
+  role_id          String? // Role-based configuration (primary)
+  user_category_id String? // User category-based (legacy/optional)
+  user_id          String? // Optional: user-specific override
+  visible          Boolean  @default(true)
+  enabled          Boolean  @default(true)
+  priority         Int      @default(0) // Higher = more specific
+  metadata         Json? // Additional configuration
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+  created_by       String
+
+  role     Role?         @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  category UserCategory? @relation(fields: [user_category_id], references: [id], onDelete: Cascade)
+  user     User?         @relation("ComponentVisibilityUser", fields: [user_id], references: [id], onDelete: Cascade)
+  creator  User          @relation("ComponentVisibilityCreator", fields: [created_by], references: [id], onDelete: Cascade)
+
+  @@unique([component_id, role_id, user_category_id, user_id])
+  @@index([component_id])
+  @@index([role_id])
+  @@index([user_category_id])
+  @@index([user_id])
+  @@index([priority])
+  @@map("component_visibility_configs")
 }

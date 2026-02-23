@@ -3,10 +3,17 @@
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import 'reactflow/dist/style.css';
+import { MainLayout } from '@/components/layouts/main-layout';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Play, Users, Settings, BarChart3, FileText, Calendar, Building2, Edit, Trash2, Plus } from 'lucide-react';
 import { ReactFlowProvider } from 'reactflow';
+import { useRouter } from 'next/navigation';
+import { workflowService, WorkflowTemplate } from '@/ui/src/services/workflows';
+import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
+import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
 
 // Dynamically import all flow components to avoid SSR issues
 const LeaveRequest3StepFlow = dynamic(
@@ -144,16 +151,36 @@ function FlowLoader() {
 }
 
 export default function WorkflowsPage() {
+  const router = useRouter();
   const [selectedFlow, setSelectedFlow] = useState<FlowType>('leave-3step');
+  const [activeTab, setActiveTab] = useState<'visualizations' | 'templates' | 'testing'>('visualizations');
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const { features, isLoading: uiLoading } = useDynamicUI();
+  const { isVisible: canView } = useComponentVisibility('workflows.view', {
+    fallbackPermission: 'workflows.templates.read',
+    fallbackCheck: (features) => features.isAdmin,
+  });
 
   useEffect(() => {
-    console.log('[WorkflowsPage] Component mounted');
-    console.log('[WorkflowsPage] Initial selectedFlow:', selectedFlow);
-  }, []);
+    if (activeTab === 'templates') {
+      loadTemplates();
+    }
+  }, [activeTab]);
 
-  useEffect(() => {
-    console.log('[WorkflowsPage] selectedFlow changed to:', selectedFlow);
-  }, [selectedFlow]);
+  const loadTemplates = async () => {
+    try {
+      setIsLoadingTemplates(true);
+      const response = await workflowService.getTemplates({});
+      if (response.success) {
+        setTemplates(response.data.templates || []);
+      }
+    } catch (error) {
+      console.error('Failed to load templates:', error);
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  };
 
   const renderFlow = () => {
     console.log('[WorkflowsPage] renderFlow called with:', selectedFlow);
@@ -195,67 +222,273 @@ export default function WorkflowsPage() {
     }
   };
 
+  if (uiLoading) {
+    return (
+      <MainLayout>
+        <div className="container mx-auto p-6">
+          <div className="text-center">Loading...</div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <MainLayout>
+        <div className="container mx-auto p-6">
+          <div className="text-center text-muted-foreground">
+            You don't have permission to access workflows.
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-background">
-      {/* Header */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
+    <MainLayout>
+      <div className="container mx-auto p-6 space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-3xl font-bold">Workflows</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage workflow templates, visualize flows, and test approval processes
+          </p>
+        </div>
+
+        {/* Main Tabs */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+          <TabsList className="grid w-full max-w-2xl grid-cols-3">
+            <TabsTrigger value="visualizations">Visualizations</TabsTrigger>
+            <TabsTrigger value="templates">Templates</TabsTrigger>
+            <TabsTrigger value="testing">Testing & Simulation</TabsTrigger>
+          </TabsList>
+
+          {/* Visualizations Tab */}
+          <TabsContent value="visualizations" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Workflow Visualizations</CardTitle>
+                <CardDescription>
+                  Interactive workflow flowcharts showing system processes
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* Category Tabs */}
+                <Tabs defaultValue="Leave & Timesheet" className="w-full">
+                  <TabsList className="grid w-full max-w-2xl grid-cols-3 mb-4">
+                    {Object.keys(flowCategories).map((category) => (
+                      <TabsTrigger key={category} value={category} className="text-sm">
+                        {category}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+
+                  {Object.entries(flowCategories).map(([category, flows]) => (
+                    <TabsContent key={category} value={category} className="mt-4">
+                      <div className="flex flex-wrap gap-3 mb-6">
+                        {flows.map((flow) => (
+                          <Button
+                            key={flow.id}
+                            variant={selectedFlow === flow.id ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setSelectedFlow(flow.id)}
+                            className="h-auto py-3 px-4 text-left whitespace-normal min-w-[200px] transition-all hover:scale-105"
+                            title={flow.description}
+                          >
+                            <div className="flex flex-col items-start gap-1 w-full">
+                              <span className="font-medium text-sm leading-tight">{flow.name}</span>
+                              <span className="text-xs text-muted-foreground font-normal leading-tight">
+                                {flow.description}
+                              </span>
+                            </div>
+                          </Button>
+                        ))}
+                      </div>
+                    </TabsContent>
+                  ))}
+                </Tabs>
+
+                {/* Flow Visualization Container */}
+                <div className="relative w-full h-[600px] rounded-lg border bg-gradient-to-br from-slate-50 to-blue-50 overflow-hidden">
+                  <ReactFlowProvider>
+                    {renderFlow()}
+                  </ReactFlowProvider>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Templates Tab */}
+          <TabsContent value="templates" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold">Workflow Templates</h2>
+                <p className="text-muted-foreground mt-1">
+                  Manage approval workflows for leave requests and timesheets
+                </p>
+              </div>
+              <Button onClick={() => router.push('/workflows/templates/new')}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Template
+              </Button>
+            </div>
+
+            {isLoadingTemplates ? (
+              <Card>
+                <CardContent className="py-8">
+                  <div className="text-center">Loading templates...</div>
+                </CardContent>
+              </Card>
+            ) : templates.length === 0 ? (
+              <Card>
+                <CardContent className="py-8">
+                  <div className="text-center text-muted-foreground">
+                    No workflow templates found. Create your first template to get started.
+                  </div>
+                  <div className="text-center mt-4">
+                    <Button onClick={() => router.push('/workflows/templates/new')}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Template
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4">
+                {templates.map((template) => (
+                  <Card key={template.id} className="hover:bg-muted/50 transition-colors">
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <CardTitle className="text-lg">{template.name}</CardTitle>
+                            <Badge variant={template.status === 'active' ? 'default' : 'secondary'}>
+                              {template.status}
+                            </Badge>
+                            <Badge variant="outline">
+                              {template.resource_type === 'leave' ? (
+                                <Calendar className="h-3 w-3 mr-1" />
+                              ) : (
+                                <FileText className="h-3 w-3 mr-1" />
+                              )}
+                              {template.resource_type}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            {template.location && (
+                              <div className="flex items-center gap-1">
+                                <Building2 className="h-4 w-4" />
+                                <span>{template.location.name}</span>
+                              </div>
+                            )}
+                            <span>{template.steps.length} step{template.steps.length !== 1 ? 's' : ''}</span>
+                            {template._count && (
+                              <span>{template._count.instances} instance{template._count.instances !== 1 ? 's' : ''}</span>
+                            )}
+                            <span>v{template.version}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => router.push(`/workflows/templates/${template.id}`)}
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Testing Tab */}
+          <TabsContent value="testing" className="space-y-6">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">PATH HR Workflows</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                Interactive workflow visualizations
+              <h2 className="text-2xl font-bold">Workflow Testing & Simulation</h2>
+              <p className="text-muted-foreground mt-1">
+                Test workflow templates with real users and simulate approval flows
               </p>
             </div>
-          </div>
 
-          {/* Tabs for Categories */}
-          <Tabs defaultValue="Leave & Timesheet" className="w-full">
-            <TabsList className="grid w-full max-w-2xl grid-cols-3">
-              {Object.keys(flowCategories).map((category) => (
-                <TabsTrigger key={category} value={category} className="text-sm">
-                  {category}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            {/* Quick Actions */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => router.push('/workflows/test/scenarios')}>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    <CardTitle>Test Scenarios</CardTitle>
+                  </div>
+                  <CardDescription>
+                    Create and manage test scenarios with multiple users
+                  </CardDescription>
+                </CardHeader>
+              </Card>
 
-            {Object.entries(flowCategories).map(([category, flows]) => (
-              <TabsContent key={category} value={category} className="mt-4">
-                <div className="flex flex-wrap gap-3">
-                  {flows.map((flow) => (
-                    <Button
-                      key={flow.id}
-                      variant={selectedFlow === flow.id ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setSelectedFlow(flow.id)}
-                      className="h-auto py-3 px-4 text-left whitespace-normal min-w-[200px] transition-all hover:scale-105"
-                      title={flow.description}
-                    >
-                      <div className="flex flex-col items-start gap-1 w-full">
-                        <span className="font-medium text-sm leading-tight">{flow.name}</span>
-                        <span className="text-xs text-muted-foreground font-normal leading-tight">
-                          {flow.description}
-                        </span>
-                      </div>
-                    </Button>
-                  ))}
+              <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => router.push('/workflows/test/simulator')}>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Play className="h-5 w-5" />
+                    <CardTitle>Workflow Simulator</CardTitle>
+                  </div>
+                  <CardDescription>
+                    Simulate workflow execution step-by-step
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+
+              <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => router.push('/workflows/test')}>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />
+                    <CardTitle>Test Results</CardTitle>
+                  </div>
+                  <CardDescription>
+                    View simulation results and analytics
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </div>
+
+            {/* Getting Started */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Getting Started</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <h3 className="font-semibold">1. Create Test Scenario</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Set up test users (employee + approvers), assign managers, roles, and locations.
+                  </p>
                 </div>
-              </TabsContent>
-            ))}
-          </Tabs>
-        </div>
+                <div className="space-y-2">
+                  <h3 className="font-semibold">2. Select Workflow Template</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Choose a workflow template to test with your scenario.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <h3 className="font-semibold">3. Run Simulation</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Simulate the workflow execution and see approver resolution at each step.
+                  </p>
+                </div>
+                <div className="pt-4">
+                  <Button onClick={() => router.push('/workflows/test/scenarios')}>
+                    <Users className="h-4 w-4 mr-2" />
+                    Create Test Scenario
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
-
-      {/* Main Content - Workflow Container */}
-      <div className="flex-1 relative min-w-0 overflow-hidden bg-gradient-to-br from-slate-50 to-blue-50">
-        <Card className="absolute inset-4 p-0 overflow-hidden bg-white">
-          <div className="w-full h-full relative">
-            <ReactFlowProvider>
-              {renderFlow()}
-            </ReactFlowProvider>
-          </div>
-        </Card>
-      </div>
-    </div>
+    </MainLayout>
   );
 }

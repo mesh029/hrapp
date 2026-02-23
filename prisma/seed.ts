@@ -194,14 +194,15 @@ async function main() {
 
   console.log(`✅ Created ${createdRoles.length} roles`);
 
-  // 3. Create Locations (PATH offices)
+  // 3. Create Locations (Regions)
   console.log('📍 Creating locations...');
   const locations = [
-    { name: 'Nairobi Office', parent: null },
-    { name: 'Kisumu Office', parent: null },
-    { name: 'Kakamega Office', parent: null },
-    { name: 'Vihiga Office', parent: null },
-    { name: 'Nyamira Office', parent: null },
+    { name: 'Nairobi', parent: null },
+    { name: 'Kisumu', parent: null },
+    { name: 'Kakamega', parent: null },
+    { name: 'Homa Bay', parent: null },
+    { name: 'Nyamira', parent: null },
+    { name: 'Vihiga', parent: null },
   ];
 
   const createdLocations = [];

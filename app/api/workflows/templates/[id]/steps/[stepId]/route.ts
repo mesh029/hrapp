@@ -110,6 +110,15 @@ export async function PATCH(
         ...(validation.data.required_permission && { required_permission: validation.data.required_permission }),
         ...(validation.data.allow_decline !== undefined && { allow_decline: validation.data.allow_decline }),
         ...(validation.data.allow_adjust !== undefined && { allow_adjust: validation.data.allow_adjust }),
+        ...(validation.data.approver_strategy !== undefined && { approver_strategy: validation.data.approver_strategy }),
+        ...(validation.data.include_manager !== undefined && { include_manager: validation.data.include_manager }),
+        ...(validation.data.required_roles !== undefined && { 
+          required_roles: validation.data.required_roles ? JSON.stringify(validation.data.required_roles) : null 
+        }),
+        ...(validation.data.location_scope !== undefined && { location_scope: validation.data.location_scope }),
+        ...(validation.data.conditional_rules !== undefined && { 
+          conditional_rules: validation.data.conditional_rules ? JSON.stringify(validation.data.conditional_rules) : null 
+        }),
       },
     });
 

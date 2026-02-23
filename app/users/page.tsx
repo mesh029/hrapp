@@ -140,6 +140,23 @@ export default function UsersPage() {
                           >
                             View
                           </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={async () => {
+                              if (confirm(`Are you sure you want to delete user "${user.name}"?`)) {
+                                try {
+                                  await usersService.deleteUser(user.id);
+                                  loadUsers();
+                                } catch (error: any) {
+                                  alert(error.message || 'Failed to delete user');
+                                }
+                              }
+                            }}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            Delete
+                          </Button>
                         </div>
                       </td>
                     </tr>

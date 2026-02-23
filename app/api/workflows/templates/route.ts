@@ -50,30 +50,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Parse query parameters
+    // Parse query params
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
-    const resource_type = searchParams.get('resource_type');
-    const location_id = searchParams.get('location_id');
+    const resourceType = searchParams.get('resource_type');
+    const locationIdFilter = searchParams.get('location_id');
     const status = searchParams.get('status');
     const search = searchParams.get('search');
 
+    const validation = paginationSchema.safeParse({ page, limit });
+    if (!validation.success) {
+      return errorResponse('Invalid pagination parameters', 400, validation.error.flatten().fieldErrors);
+    }
+
     // Build where clause
     const where: any = {};
-
-    if (resource_type) {
-      where.resource_type = resource_type;
+    if (resourceType) {
+      where.resource_type = resourceType;
     }
-
-    if (location_id) {
-      where.location_id = location_id;
+    if (locationIdFilter) {
+      where.location_id = locationIdFilter;
     }
-
     if (status) {
       where.status = status;
     }
-
     if (search) {
       where.name = { contains: search, mode: 'insensitive' };
     }
@@ -82,9 +83,6 @@ export async function GET(request: NextRequest) {
     const [templates, total] = await Promise.all([
       prisma.workflowTemplate.findMany({
         where,
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: [{ resource_type: 'asc' }, { name: 'asc' }],
         include: {
           location: {
             select: {
@@ -101,12 +99,25 @@ export async function GET(request: NextRequest) {
             },
           },
         },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { created_at: 'desc' },
       }),
       prisma.workflowTemplate.count({ where }),
     ]);
 
+    // Parse JSON fields in steps
+    const templatesWithParsedSteps = templates.map(template => ({
+      ...template,
+      steps: template.steps.map(step => ({
+        ...step,
+        required_roles: step.required_roles ? JSON.parse(step.required_roles as string) : null,
+        conditional_rules: step.conditional_rules ? JSON.parse(step.conditional_rules as string) : null,
+      })),
+    }));
+
     return successResponse({
-      templates,
+      templates: templatesWithParsedSteps,
       pagination: {
         page,
         limit,
@@ -143,30 +154,7 @@ export async function POST(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    try {
-      await requirePermission(user, 'workflows.templates.create', { locationId });
-    } catch {
-      const hasSystemAdmin = await prisma.userRole.findFirst({
-        where: {
-          user_id: user.id,
-          deleted_at: null,
-          role: {
-            status: 'active',
-            role_permissions: {
-              some: {
-                permission: {
-                  name: 'system.admin',
-                },
-              },
-            },
-          },
-        },
-      });
-
-      if (!hasSystemAdmin) {
-        return unauthorizedResponse('You do not have permission to create workflow templates');
-      }
-    }
+    await requirePermission(user, 'workflows.templates.create', { locationId });
 
     const body = await request.json();
     const validation = createWorkflowTemplateSchema.safeParse(body);
@@ -179,8 +167,8 @@ export async function POST(request: NextRequest) {
       where: { id: validation.data.location_id },
     });
 
-    if (!location || location.status === 'inactive') {
-      return errorResponse('Invalid or inactive location', 400);
+    if (!location) {
+      return errorResponse('Location not found', 404);
     }
 
     // Validate permissions exist
@@ -214,6 +202,11 @@ export async function POST(request: NextRequest) {
           required_permission: step.required_permission,
           allow_decline: step.allow_decline,
           allow_adjust: step.allow_adjust,
+          approver_strategy: step.approver_strategy || 'permission',
+          include_manager: step.include_manager || false,
+          required_roles: step.required_roles ? JSON.stringify(step.required_roles) : null,
+          location_scope: step.location_scope || 'same',
+          conditional_rules: step.conditional_rules ? JSON.stringify(step.conditional_rules) : null,
         })),
       });
 
@@ -236,7 +229,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return successResponse(createdTemplate, undefined, 201);
+    // Parse JSON fields
+    const templateWithParsedSteps = {
+      ...createdTemplate!,
+      steps: createdTemplate!.steps.map(step => ({
+        ...step,
+        required_roles: step.required_roles ? JSON.parse(step.required_roles as string) : null,
+        conditional_rules: step.conditional_rules ? JSON.parse(step.conditional_rules as string) : null,
+      })),
+    };
+
+    return successResponse(templateWithParsedSteps, undefined, 201);
   } catch (error: any) {
     console.error('Create workflow template error:', error);
     if (error.message.includes('Unauthorized')) {

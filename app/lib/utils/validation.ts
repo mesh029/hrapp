@@ -113,6 +113,15 @@ export const createWorkflowStepSchema = z.object({
   required_permission: z.string().min(1),
   allow_decline: z.boolean().default(true),
   allow_adjust: z.boolean().default(false),
+  // Approver Resolution Configuration
+  approver_strategy: z.enum(['permission', 'manager', 'role', 'combined']).optional().default('permission'),
+  include_manager: z.boolean().optional().default(false),
+  required_roles: z.array(z.string().uuid()).optional(),
+  location_scope: z.enum(['same', 'parent', 'descendants', 'all']).optional().default('same'),
+  conditional_rules: z.array(z.object({
+    condition: z.string(),
+    approver_strategy: z.string(),
+  })).optional(),
 });
 
 export const updateWorkflowStepSchema = z.object({
@@ -120,6 +129,14 @@ export const updateWorkflowStepSchema = z.object({
   required_permission: z.string().min(1).optional(),
   allow_decline: z.boolean().optional(),
   allow_adjust: z.boolean().optional(),
+  approver_strategy: z.enum(['permission', 'manager', 'role', 'combined']).optional(),
+  include_manager: z.boolean().optional(),
+  required_roles: z.array(z.string().uuid()).optional(),
+  location_scope: z.enum(['same', 'parent', 'descendants', 'all']).optional(),
+  conditional_rules: z.array(z.object({
+    condition: z.string(),
+    approver_strategy: z.string(),
+  })).optional(),
 });
 
 /**

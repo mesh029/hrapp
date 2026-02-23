@@ -24,14 +24,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const currentUser = authService.getCurrentUser();
     setUser(currentUser);
     setIsLoading(false);
-
-    if (!currentUser && typeof window !== 'undefined') {
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        router.push('/login');
-      }
-    }
-  }, [router]);
+    // Don't redirect here - let the root page handle it
+  }, []);
 
   const login = async (email: string, password: string) => {
     const response = await authService.login({ email, password });
