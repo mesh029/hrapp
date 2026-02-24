@@ -9,6 +9,7 @@ import { dashboardService } from '@/ui/src/services/dashboard';
 import { usersService } from '@/ui/src/services/users';
 import { useRouter } from 'next/navigation';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
+import { useAuth } from '@/ui/src/contexts/auth-context';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -19,6 +20,8 @@ export default function DashboardPage() {
     pendingLeaveRequests: 0,
     pendingTimesheets: 0,
     pendingApprovals: 0,
+    directReports: 0,
+    locationEmployees: 0,
   });
   const [isLoading, setIsLoading] = React.useState(true);
 
@@ -96,6 +99,50 @@ export default function DashboardPage() {
           }
         } catch (approvalsError) {
           console.error('Failed to load pending approvals:', approvalsError);
+        }
+      }
+
+      // Load employee counts (direct reports and location-based)
+      if (user?.id) {
+        try {
+          // Get user details first
+          const userDetails = await usersService.getUser(user.id);
+          if (userDetails.success && userDetails.data) {
+            const userData = userDetails.data as any;
+            const locationId = userData.primary_location_id || userData.location_id;
+
+            // Get all active users and filter client-side
+            const allUsersRes = await usersService.getUsers({ 
+              limit: 1000,
+              status: 'active',
+            });
+            const allUsersData = allUsersRes.data as any;
+            const allUsers = Array.isArray(allUsersData.users) 
+              ? allUsersData.users 
+              : (allUsersData.data?.users || []);
+
+            // Count direct reports
+            const directReports = allUsers.filter((u: any) => 
+              u.manager_id === user.id && u.status === 'active'
+            ).length;
+
+            // Count location-based employees
+            let locationEmployees = 0;
+            if (locationId) {
+              locationEmployees = allUsers.filter((u: any) => 
+                u.status === 'active' && 
+                (u.primary_location_id === locationId || u.location_id === locationId)
+              ).length;
+            }
+
+            setStats(prev => ({
+              ...prev,
+              directReports,
+              locationEmployees,
+            }));
+          }
+        } catch (error) {
+          console.error('Failed to load employee counts:', error);
         }
       }
     } catch (error) {

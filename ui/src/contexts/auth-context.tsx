@@ -36,6 +36,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setUser(response.data.user);
       router.push('/dashboard');
+    } else {
+      // Throw error so the login page can display it
+      throw new Error(response.message || 'Login failed. Please check your credentials.');
     }
   };
 

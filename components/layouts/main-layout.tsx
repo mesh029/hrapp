@@ -19,6 +19,7 @@ import { Sidebar, SidebarContent, SidebarItem } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -220,9 +221,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" aria-label="Notifications">
-              <Bell className="h-5 w-5" />
-            </Button>
+            <NotificationBell />
             <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
               <User className="h-4 w-4 text-primary-foreground" />
             </div>

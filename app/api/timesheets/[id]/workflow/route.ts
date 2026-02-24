@@ -108,35 +108,36 @@ export async function GET(
           resource_id: params.id,
           resource_type: 'timesheet',
         },
-      include: {
-        template: {
-          include: {
-            steps: {
-              orderBy: { step_order: 'asc' },
+        include: {
+          template: {
+            include: {
+              steps: {
+                orderBy: { step_order: 'asc' },
+              },
             },
           },
-        },
-        creator: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+          creator: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
           },
-        },
-        steps: {
-          orderBy: { step_order: 'asc' },
-          include: {
-            actor: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
+          steps: {
+            orderBy: { step_order: 'asc' },
+            include: {
+              actor: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
+    }
 
     // Debug logging
     if (!workflowInstance) {
@@ -185,6 +186,11 @@ export async function GET(
       workflow_instance_id: workflowInstance.id,
       workflow_status: workflowInstance.status,
       current_step_order: workflowInstance.current_step_order,
+      template: {
+        id: workflowInstance.template.id,
+        name: workflowInstance.template.name,
+        resource_type: workflowInstance.template.resource_type,
+      },
       created_at: workflowInstance.created_at,
       updated_at: workflowInstance.updated_at,
       creator: workflowInstance.creator,

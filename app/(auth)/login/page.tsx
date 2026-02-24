@@ -97,13 +97,36 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="text-center text-sm text-muted-foreground space-y-1">
-          <p>Default credentials:</p>
-          <p className="font-mono text-xs">admin@path.org</p>
-          <p className="font-mono text-xs">oneeyedragon</p>
-          <p className="text-xs mt-2 text-muted-foreground/70">
-            Note: If login fails, ensure Docker API is stopped when running dev server
-          </p>
+        <div className="text-center text-sm text-muted-foreground space-y-2">
+          <button
+            type="button"
+            onClick={async () => {
+              setEmail('admin@test.com');
+              setPassword('Password123!');
+              setError('');
+              setIsLoading(true);
+              try {
+                await login('admin@test.com', 'Password123!');
+              } catch (err: any) {
+                console.error('Login error:', err);
+                setError(err.message || 'An error occurred during login');
+                setIsLoading(false);
+              }
+            }}
+            disabled={isLoading}
+            className="w-full p-3 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/30 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <p className="font-semibold mb-2 text-primary">Click to Login as Admin</p>
+            <div className="space-y-1 text-xs text-left">
+              <p><span className="font-medium">Email:</span> <span className="font-mono">admin@test.com</span></p>
+              <p><span className="font-medium">Password:</span> <span className="font-mono">Password123!</span></p>
+            </div>
+          </button>
+          <div className="p-3 rounded-lg bg-muted/50 border border-border">
+            <p className="font-semibold mb-2 text-xs">All Users:</p>
+            <p className="text-xs">Default password: <span className="font-mono">Password123!</span></p>
+            <p className="text-xs mt-1">Check seeded users for their email addresses</p>
+          </div>
         </div>
       </Card>
     </div>

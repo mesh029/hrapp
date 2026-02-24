@@ -79,6 +79,19 @@ export async function GET(
             name: true,
           },
         },
+        staff_type: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
+        leave_type: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         steps: {
           orderBy: { step_order: 'asc' },
         },
@@ -165,15 +178,61 @@ export async function PATCH(
       return notFoundResponse('Workflow template not found');
     }
 
+    // Validate staff_type exists if provided
+    if (validation.data.staff_type_id !== undefined) {
+      if (validation.data.staff_type_id) {
+        const staffType = await prisma.staffType.findUnique({
+          where: { id: validation.data.staff_type_id },
+        });
+
+        if (!staffType || staffType.deleted_at) {
+          return errorResponse('Staff type not found', 404);
+        }
+      }
+    }
+
+    // Validate leave_type exists if provided (and only for leave workflows)
+    if (validation.data.leave_type_id !== undefined) {
+      if (validation.data.leave_type_id) {
+        if (existingTemplate.resource_type !== 'leave') {
+          return errorResponse('leave_type_id can only be set for leave workflows', 400);
+        }
+
+        const leaveType = await prisma.leaveType.findUnique({
+          where: { id: validation.data.leave_type_id },
+        });
+
+        if (!leaveType || leaveType.deleted_at) {
+          return errorResponse('Leave type not found', 404);
+        }
+      }
+    }
+
     // Update template
     const updatedTemplate = await prisma.workflowTemplate.update({
       where: { id: params.id },
       data: {
         ...(validation.data.name !== undefined && { name: validation.data.name }),
         ...(validation.data.status !== undefined && { status: validation.data.status }),
+        ...(validation.data.is_area_wide !== undefined && { is_area_wide: validation.data.is_area_wide }),
+        ...(validation.data.staff_type_id !== undefined && { staff_type_id: validation.data.staff_type_id }),
+        ...(validation.data.leave_type_id !== undefined && { leave_type_id: validation.data.leave_type_id }),
       },
       include: {
         location: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        staff_type: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
+        leave_type: {
           select: {
             id: true,
             name: true,
@@ -233,7 +292,32 @@ export async function DELETE(
       return errorResponse('No location available for permission check', 400);
     }
 
-    await requirePermission(user, 'workflows.templates.delete', { locationId });
+    // Check permission - allow system.admin as fallback
+    try {
+      await requirePermission(user, 'workflows.templates.delete', { locationId });
+    } catch {
+      // Check if user is system admin
+      const hasSystemAdmin = await prisma.userRole.findFirst({
+        where: {
+          user_id: user.id,
+          deleted_at: null,
+          role: {
+            status: 'active',
+            role_permissions: {
+              some: {
+                permission: {
+                  name: 'system.admin',
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!hasSystemAdmin) {
+        return unauthorizedResponse('You do not have permission to delete workflow templates');
+      }
+    }
 
     // Validate UUID
     const validationResult = uuidSchema.safeParse(params.id);

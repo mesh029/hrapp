@@ -56,6 +56,13 @@ export function useDynamicUI() {
         anyPermission: ['workflows.read', 'workflows.manage', 'system.admin'],
       },
       {
+        href: '/approvals/pending',
+        label: 'Pending Approvals',
+        icon: null,
+        requiredPermissions: [],
+        anyPermission: ['leave.approve', 'timesheet.approve', 'workflows.read', 'system.admin'],
+      },
+      {
         href: '/reports',
         label: 'Reports',
         icon: null,

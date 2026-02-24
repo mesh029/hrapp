@@ -146,6 +146,16 @@ export const timesheetService = {
   },
 
   /**
+   * Delete a timesheet (admin only)
+   */
+  async deleteTimesheet(id: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    return api.delete(`/api/timesheets/${id}`);
+  },
+
+  /**
    * Validate a timesheet
    */
   async validateTimesheet(id: string): Promise<{

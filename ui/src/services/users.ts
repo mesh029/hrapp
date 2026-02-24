@@ -26,6 +26,7 @@ export interface CreateUserData {
   charge_code?: string;
   primary_location_id?: string;
   manager_id?: string;
+  roleIds?: string[];
 }
 
 export interface UpdateUserData {

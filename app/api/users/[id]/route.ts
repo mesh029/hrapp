@@ -246,6 +246,21 @@ export async function PATCH(
       },
     });
 
+    // Auto-sync Manager role if manager_id changed
+    if (validation.data.manager_id !== undefined) {
+      const { syncManagerRole } = await import('@/lib/utils/manager-role');
+      // Sync for the old manager (if removed) and new manager (if assigned)
+      if (validation.data.manager_id) {
+        await syncManagerRole(validation.data.manager_id).catch(err => {
+          console.error('Failed to sync Manager role for new manager:', err);
+        });
+      }
+      // Also sync for the user being updated (in case they became/didn't become a manager)
+      await syncManagerRole(params.id).catch(err => {
+        console.error('Failed to sync Manager role for updated user:', err);
+      });
+    }
+
     return successResponse(updatedUser, 'User updated successfully');
   } catch (error: any) {
     console.error('Update user error:', error);

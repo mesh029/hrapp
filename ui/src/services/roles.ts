@@ -116,7 +116,11 @@ export const rolesService = {
    */
   async getRolePermissions(roleId: string): Promise<{
     success: boolean;
-    data: RolePermission[];
+    data: {
+      roleId: string;
+      roleName: string;
+      permissions: Permission[];
+    } | RolePermission[];
   }> {
     return api.get(`/api/roles/${roleId}/permissions`);
   },
@@ -128,7 +132,7 @@ export const rolesService = {
     success: boolean;
     data: RolePermission;
   }> {
-    return api.post(`/api/roles/${roleId}/permissions`, { permission_id: permissionId });
+    return api.post(`/api/roles/${roleId}/permissions`, { permissionId: permissionId });
   },
 
   /**

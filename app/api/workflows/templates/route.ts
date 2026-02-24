@@ -56,6 +56,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const resourceType = searchParams.get('resource_type');
     const locationIdFilter = searchParams.get('location_id');
+    const staffTypeIdFilter = searchParams.get('staff_type_id');
+    const leaveTypeIdFilter = searchParams.get('leave_type_id');
     const status = searchParams.get('status');
     const search = searchParams.get('search');
 
@@ -72,6 +74,12 @@ export async function GET(request: NextRequest) {
     if (locationIdFilter) {
       where.location_id = locationIdFilter;
     }
+    if (staffTypeIdFilter) {
+      where.staff_type_id = staffTypeIdFilter;
+    }
+    if (leaveTypeIdFilter) {
+      where.leave_type_id = leaveTypeIdFilter;
+    }
     if (status) {
       where.status = status;
     }
@@ -85,6 +93,19 @@ export async function GET(request: NextRequest) {
         where,
         include: {
           location: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          staff_type: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+          leave_type: {
             select: {
               id: true,
               name: true,
@@ -171,6 +192,32 @@ export async function POST(request: NextRequest) {
       return errorResponse('Location not found', 404);
     }
 
+    // Validate staff_type exists if provided
+    if (validation.data.staff_type_id) {
+      const staffType = await prisma.staffType.findUnique({
+        where: { id: validation.data.staff_type_id },
+      });
+
+      if (!staffType || staffType.deleted_at) {
+        return errorResponse('Staff type not found', 404);
+      }
+    }
+
+    // Validate leave_type exists if provided (and only for leave workflows)
+    if (validation.data.leave_type_id) {
+      if (validation.data.resource_type !== 'leave') {
+        return errorResponse('leave_type_id can only be set for leave workflows', 400);
+      }
+
+      const leaveType = await prisma.leaveType.findUnique({
+        where: { id: validation.data.leave_type_id },
+      });
+
+      if (!leaveType || leaveType.deleted_at) {
+        return errorResponse('Leave type not found', 404);
+      }
+    }
+
     // Validate permissions exist
     for (const step of validation.data.steps) {
       const permission = await prisma.permission.findUnique({
@@ -189,6 +236,9 @@ export async function POST(request: NextRequest) {
           name: validation.data.name,
           resource_type: validation.data.resource_type,
           location_id: validation.data.location_id,
+          is_area_wide: validation.data.is_area_wide || false,
+          staff_type_id: validation.data.staff_type_id || null,
+          leave_type_id: validation.data.leave_type_id || null,
           version: 1,
           status: 'active',
         },
@@ -218,6 +268,19 @@ export async function POST(request: NextRequest) {
       where: { id: template.id },
       include: {
         location: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        staff_type: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
+        leave_type: {
           select: {
             id: true,
             name: true,

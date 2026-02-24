@@ -77,6 +77,9 @@ export async function PATCH(
       }
     }
 
+    // Get old manager_id before update
+    const oldManagerId = targetUser.manager_id;
+
     // Update manager
     const updatedUser = await prisma.user.update({
       where: { id: params.id },
@@ -98,6 +101,23 @@ export async function PATCH(
         updated_at: true,
       },
     });
+
+    // Auto-sync Manager role for old and new managers
+    const { syncManagerRole } = await import('@/lib/utils/manager-role');
+    
+    // Sync old manager (if they lost a direct report)
+    if (oldManagerId && oldManagerId !== manager_id) {
+      await syncManagerRole(oldManagerId).catch(err => {
+        console.error('Failed to sync Manager role for old manager:', err);
+      });
+    }
+    
+    // Sync new manager (if they gained a direct report)
+    if (manager_id && manager_id !== oldManagerId) {
+      await syncManagerRole(manager_id).catch(err => {
+        console.error('Failed to sync Manager role for new manager:', err);
+      });
+    }
 
     return successResponse(updatedUser, 'Manager updated successfully');
   } catch (error: any) {

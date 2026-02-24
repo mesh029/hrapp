@@ -13,6 +13,7 @@ import { locationsService } from '@/ui/src/services/locations';
 import { useRouter } from 'next/navigation';
 import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
+import { usePermissions } from '@/ui/src/hooks/use-permissions';
 
 const COMPONENT_ID_VIEW = 'workflows.templates.view';
 const COMPONENT_ID_CREATE = 'workflows.templates.create';
@@ -20,6 +21,7 @@ const COMPONENT_ID_CREATE = 'workflows.templates.create';
 export default function WorkflowTemplatesPage() {
   const router = useRouter();
   const { features, isLoading: uiLoading } = useDynamicUI();
+  const { hasPermission } = usePermissions();
   const { isVisible: canView } = useComponentVisibility(COMPONENT_ID_VIEW, {
     fallbackPermission: 'workflows.templates.read',
     fallbackCheck: (features) => features.isAdmin,
@@ -28,6 +30,8 @@ export default function WorkflowTemplatesPage() {
     fallbackPermission: 'workflows.templates.create',
     fallbackCheck: (features) => features.isAdmin,
   });
+  // For delete, check both isAdmin and workflows.templates.delete permission
+  const canDelete = features.isAdmin || hasPermission('workflows.templates.delete');
 
   const [templates, setTemplates] = React.useState<WorkflowTemplate[]>([]);
   const [locations, setLocations] = React.useState<Array<{ id: string; name: string }>>([]);
@@ -82,7 +86,13 @@ export default function WorkflowTemplatesPage() {
   }, [searchTerm, filterResourceType, filterLocation, filterStatus]);
 
   const handleDelete = async (template: WorkflowTemplate) => {
-    if (!confirm(`Are you sure you want to delete "${template.name}"? This action cannot be undone.`)) {
+    const confirmMessage = `Are you sure you want to delete "${template.name}"?\n\n` +
+      `This action cannot be undone. ` +
+      (template._count && template._count.instances > 0
+        ? `\n⚠️ Warning: This template has ${template._count.instances} active instance(s). You cannot delete templates with active instances.`
+        : '');
+
+    if (!confirm(confirmMessage)) {
       return;
     }
 
@@ -91,11 +101,13 @@ export default function WorkflowTemplatesPage() {
       if (response.success) {
         loadData();
       } else {
-        alert('Failed to delete template');
+        const errorMsg = (response as any).error || (response as any).message || 'Failed to delete template';
+        alert(errorMsg);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete template:', error);
-      alert('Failed to delete template');
+      const errorMsg = error.response?.data?.error || error.message || 'Failed to delete template';
+      alert(errorMsg);
     }
   };
 
@@ -252,13 +264,19 @@ export default function WorkflowTemplatesPage() {
                           <Edit className="h-4 w-4 mr-2" />
                           Edit
                         </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDelete(template)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {canDelete && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDelete(template)}
+                            disabled={template._count && template._count.instances > 0}
+                            title={template._count && template._count.instances > 0 
+                              ? 'Cannot delete template with active instances' 
+                              : 'Delete template'}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>

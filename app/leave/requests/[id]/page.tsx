@@ -34,6 +34,7 @@ export default function LeaveRequestDetailPage() {
   const [workflowTimeline, setWorkflowTimeline] = React.useState<{
     has_workflow: boolean;
     workflow_status?: string;
+    template?: { id: string; name: string; resource_type: string };
     timeline: TimelineStep[];
   } | null>(null);
 
@@ -339,6 +340,7 @@ export default function LeaveRequestDetailPage() {
         <ApprovalTimeline
           timeline={workflowTimeline?.timeline || []}
           workflowStatus={workflowTimeline?.workflow_status}
+          templateName={workflowTimeline?.template?.name}
         />
       </div>
     </MainLayout>

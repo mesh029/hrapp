@@ -112,10 +112,16 @@ export async function checkAuthority(params: AuthorityCheckParams): Promise<{
       return { authorized: false, source: null };
     }
 
-    // Check if this is the current step
-    if (workflowInstance.current_step_order !== workflowStepOrder) {
+    // Check if this is the current step (or if we're checking for future steps during simulation/resolution)
+    // Allow authority check for current step OR if step order is >= current step (for resolving future approvers)
+    // Also allow if current_step_order is null or 0 (workflow just started)
+    if (workflowInstance.current_step_order !== null && workflowInstance.current_step_order > workflowStepOrder) {
+      // This step has already passed, no need to check authority
       return { authorized: false, source: null };
     }
+    // If current_step_order < workflowStepOrder, we're checking a future step - allow it for resolution purposes
+    // If current_step_order === workflowStepOrder, we're checking the current step - allow it
+    // If current_step_order is null/0, we're at the start - allow it
   }
 
   // 3. Check cache first

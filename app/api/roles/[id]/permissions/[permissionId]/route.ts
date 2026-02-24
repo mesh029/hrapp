@@ -87,6 +87,56 @@ export async function DELETE(
       },
     });
 
+    // Clean up UserPermissionScope entries for users who only had this permission through this role
+    try {
+      // Get all users with this role
+      const usersWithRole = await prisma.userRole.findMany({
+        where: {
+          role_id: params.id,
+          deleted_at: null,
+          user: {
+            status: 'active',
+            deleted_at: null,
+          },
+        },
+        select: {
+          user_id: true,
+        },
+      });
+
+      for (const userRole of usersWithRole) {
+        // Check if user still has this permission through another role
+        const hasPermissionThroughOtherRole = await prisma.userRole.findFirst({
+          where: {
+            user_id: userRole.user_id,
+            deleted_at: null,
+            role_id: { not: params.id },
+            role: {
+              status: 'active',
+              role_permissions: {
+                some: {
+                  permission_id: params.permissionId,
+                },
+              },
+            },
+          },
+        });
+
+        // Only remove scope if user doesn't have permission through another role
+        if (!hasPermissionThroughOtherRole) {
+          await prisma.userPermissionScope.deleteMany({
+            where: {
+              user_id: userRole.user_id,
+              permission_id: params.permissionId,
+            },
+          });
+        }
+      }
+    } catch (cleanupError: any) {
+      // Log error but don't fail the request
+      console.error('[Role Permission] Failed to cleanup scopes:', cleanupError.message);
+    }
+
     // Return updated role
     const updatedRole = await prisma.role.findUnique({
       where: { id: params.id },

@@ -90,31 +90,30 @@ export async function POST(
       return errorResponse('Timesheet submission is not enabled for this period', 400);
     }
 
-    // Find workflow template for timesheet approval
-    const template = await prisma.workflowTemplate.findFirst({
-      where: {
-        resource_type: 'timesheet',
-        location_id: timesheet.location_id,
-        status: 'active',
-      },
-      include: {
-        steps: {
-          orderBy: { step_order: 'asc' },
-        },
-      },
+    // Get timesheet owner's staff type for template matching
+    const timesheetOwner = await prisma.user.findUnique({
+      where: { id: timesheet.user_id },
+      select: { staff_type_id: true },
     });
 
-    if (!template) {
-      return errorResponse('No workflow template found for timesheet approval', 404);
+    // Find workflow template matching location and staff type
+    const { findWorkflowTemplate, createWorkflowInstance } = await import('@/lib/services/workflow');
+    const templateId = await findWorkflowTemplate({
+      resourceType: 'timesheet',
+      locationId: timesheet.location_id,
+      staffTypeId: timesheetOwner?.staff_type_id || null,
+    });
+
+    if (!templateId) {
+      return errorResponse('No workflow template found matching this timesheet criteria (location, employee type)', 404);
     }
 
     // Create workflow instance
-    const { createWorkflowInstance } = await import('@/lib/services/workflow');
     const workflowInstanceId = await createWorkflowInstance({
-      templateId: template.id,
+      templateId: templateId,
       resourceType: 'timesheet',
       resourceId: timesheet.id,
-      createdBy: user.id,
+      createdBy: user.id, // authenticated user (may be admin submitting on behalf)
       locationId: timesheet.location_id,
     });
 

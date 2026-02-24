@@ -9,9 +9,10 @@ import { useRouter, useParams } from 'next/navigation';
 import { timesheetService, Timesheet } from '@/ui/src/services/timesheets';
 import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
+import { usePermissions } from '@/ui/src/hooks/use-permissions';
 import { useAuth } from '@/ui/src/contexts/auth-context';
 import { ApprovalTimeline, TimelineStep } from '@/components/workflows/ApprovalTimeline';
-import { Calendar, User, Clock, FileText, ArrowLeft, Edit, Send, CheckCircle, ClockIcon, CalendarDays } from 'lucide-react';
+import { Calendar, User, Clock, FileText, ArrowLeft, Edit, Send, CheckCircle, ClockIcon, CalendarDays, Trash2 } from 'lucide-react';
 
 const COMPONENT_ID_DETAIL_VIEW = 'timesheet.detail.view';
 const COMPONENT_ID_EDIT_ACTION = 'timesheet.edit.action';
@@ -33,6 +34,7 @@ export default function TimesheetDetailPage() {
   const params = useParams();
   const { user } = useAuth();
   const { features } = useDynamicUI();
+  const { hasPermission } = usePermissions();
   const [timesheet, setTimesheet] = React.useState<Timesheet | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -43,6 +45,7 @@ export default function TimesheetDetailPage() {
   const [workflowTimeline, setWorkflowTimeline] = React.useState<{
     has_workflow: boolean;
     workflow_status?: string;
+    template?: { id: string; name: string; resource_type: string };
     timeline: TimelineStep[];
   } | null>(null);
 
@@ -72,6 +75,9 @@ export default function TimesheetDetailPage() {
     fallbackPermission: 'timesheet.create',
     fallbackCheck: (features) => timesheet?.status === 'Draft' && features.canCreateTimesheet && !features.isAdmin,
   });
+
+  // Check if user can delete (admin only)
+  const canDelete = features.isAdmin || hasPermission('timesheet.delete') || hasPermission('system.admin');
 
   React.useEffect(() => {
     if (timesheetId && canView) {
@@ -141,6 +147,33 @@ export default function TimesheetDetailPage() {
     } catch (error) {
       console.error('Failed to submit timesheet:', error);
       alert('Failed to submit timesheet');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!timesheet) return;
+
+    const confirmMessage = timesheet.status === 'Approved' 
+      ? '⚠️ WARNING: This timesheet has been approved. Are you sure you want to delete it? This action cannot be undone.'
+      : `Are you sure you want to delete this timesheet? This action cannot be undone.`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const response = await timesheetService.deleteTimesheet(timesheet.id);
+      if (response.success) {
+        router.push('/timesheets');
+      } else {
+        alert(response.message || 'Failed to delete timesheet');
+      }
+    } catch (error: any) {
+      console.error('Failed to delete timesheet:', error);
+      alert(error.message || 'Failed to delete timesheet');
     } finally {
       setIsSubmitting(false);
     }
@@ -398,7 +431,7 @@ export default function TimesheetDetailPage() {
             )}
 
             {/* Actions */}
-            {(canEdit || canSubmit || canRequestWeekendExtra || canRequestOvertime) && (
+            {(canEdit || canSubmit || canRequestWeekendExtra || canRequestOvertime || canDelete) && (
               <Card>
                 <CardHeader>
                   <CardTitle>Actions</CardTitle>
@@ -442,6 +475,17 @@ export default function TimesheetDetailPage() {
                       >
                         <Send className="mr-2 h-4 w-4" />
                         {isSubmitting ? 'Submitting...' : 'Submit for Approval'}
+                      </Button>
+                    )}
+
+                    {canDelete && (
+                      <Button
+                        variant="destructive"
+                        onClick={handleDelete}
+                        disabled={isSubmitting}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        {isSubmitting ? 'Deleting...' : 'Delete Timesheet'}
                       </Button>
                     )}
                   </div>
@@ -505,6 +549,7 @@ export default function TimesheetDetailPage() {
         <ApprovalTimeline
           timeline={workflowTimeline?.timeline || []}
           workflowStatus={workflowTimeline?.workflow_status}
+          templateName={workflowTimeline?.template?.name}
         />
       </div>
     </MainLayout>

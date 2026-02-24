@@ -104,6 +104,18 @@ export async function POST(
     }
 
     // Assign role (upsert to handle soft-deleted assignments)
+    const wasDeleted = await prisma.userRole.findUnique({
+      where: {
+        user_id_role_id: {
+          user_id: params.id,
+          role_id: validation.data.roleId,
+        },
+      },
+      select: {
+        deleted_at: true,
+      },
+    });
+
     await prisma.userRole.upsert({
       where: {
         user_id_role_id: {
@@ -119,6 +131,19 @@ export async function POST(
         role_id: validation.data.roleId,
       },
     });
+
+    // Automatically create UserPermissionScope entries for this user for all permissions in this role
+    // Only if this is a new assignment or was previously deleted
+    if (!wasDeleted || wasDeleted.deleted_at) {
+      try {
+        const { syncScopesForUserRole } = await import('@/lib/utils/sync-role-permissions');
+        const result = await syncScopesForUserRole(params.id, validation.data.roleId);
+        console.log(`[User Role] Created ${result.created} scopes, skipped ${result.skipped} existing scopes for user ${params.id}`);
+      } catch (syncError: any) {
+        // Log error but don't fail the request - scopes can be created manually if needed
+        console.error('[User Role] Failed to sync scopes:', syncError.message);
+      }
+    }
 
     // Return updated user with roles
     const updatedUser = await prisma.user.findUnique({

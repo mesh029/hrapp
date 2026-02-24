@@ -74,10 +74,14 @@ export default function RolesPage() {
     try {
       const response = await rolesService.getRolePermissions(roleId);
       if (response.success && response.data) {
-        setRolePermissions(response.data.map(rp => rp.permission_id));
+        // API returns { roleId, roleName, permissions: [...] }
+        // permissions is an array of Permission objects with id
+        const permissions = (response.data as any).permissions || response.data;
+        setRolePermissions(Array.isArray(permissions) ? permissions.map((p: any) => p.id) : []);
       }
     } catch (error) {
       console.error('Failed to load role permissions:', error);
+      setRolePermissions([]);
     }
   };
 
@@ -165,14 +169,27 @@ export default function RolesPage() {
     const isAssigned = rolePermissions.includes(permissionId);
     try {
       if (isAssigned) {
-        await rolesService.removePermission(selectedRole.id, permissionId);
-        setRolePermissions(prev => prev.filter(id => id !== permissionId));
+        const response = await rolesService.removePermission(selectedRole.id, permissionId);
+        if (response.success) {
+          // Reload permissions from server to ensure sync
+          await loadRolePermissions(selectedRole.id);
+        } else {
+          throw new Error(response.message || 'Failed to remove permission');
+        }
       } else {
-        await rolesService.assignPermission(selectedRole.id, permissionId);
-        setRolePermissions(prev => [...prev, permissionId]);
+        const response = await rolesService.assignPermission(selectedRole.id, permissionId);
+        if (response.success) {
+          // Reload permissions from server to ensure sync
+          await loadRolePermissions(selectedRole.id);
+        } else {
+          throw new Error('Failed to assign permission');
+        }
       }
     } catch (error: any) {
-      alert(error.message || 'Failed to update permission');
+      console.error('Failed to update permission:', error);
+      alert(error.message || 'Failed to update permission. Please try again.');
+      // Reload permissions to restore correct state
+      await loadRolePermissions(selectedRole.id);
     }
   };
 

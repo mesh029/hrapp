@@ -22,7 +22,19 @@ export interface WorkflowTemplate {
   name: string;
   resource_type: 'leave' | 'timesheet';
   location_id: string;
+  is_area_wide?: boolean; // If true, template applies area-wide (all locations)
+  staff_type_id?: string | null;
+  leave_type_id?: string | null;
   location?: {
+    id: string;
+    name: string;
+  };
+  staff_type?: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  leave_type?: {
     id: string;
     name: string;
   };
@@ -40,12 +52,18 @@ export interface CreateWorkflowTemplateData {
   name: string;
   resource_type: 'leave' | 'timesheet';
   location_id: string;
+  is_area_wide?: boolean; // If true, template applies area-wide (all locations)
+  staff_type_id?: string | null; // Optional: filter by employee type
+  leave_type_id?: string | null; // Optional: filter by leave type (only for leave workflows)
   steps: Omit<WorkflowStep, 'id'>[];
 }
 
 export interface UpdateWorkflowTemplateData {
   name?: string;
   status?: 'active' | 'deprecated';
+  is_area_wide?: boolean; // If true, template applies area-wide (all locations)
+  staff_type_id?: string | null;
+  leave_type_id?: string | null;
 }
 
 export const workflowService = {

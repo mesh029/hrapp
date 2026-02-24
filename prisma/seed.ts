@@ -59,11 +59,17 @@ async function main() {
     { name: 'timesheet.approve', module: 'timesheet', description: 'Approve timesheets' },
     { name: 'timesheet.decline', module: 'timesheet', description: 'Decline timesheets' },
     
-    // Workflow management
+    // Workflow management (legacy - kept for backward compatibility)
     { name: 'workflows.create', module: 'workflows', description: 'Create workflow templates' },
     { name: 'workflows.read', module: 'workflows', description: 'View workflow templates' },
     { name: 'workflows.update', module: 'workflows', description: 'Update workflow templates' },
     { name: 'workflows.delete', module: 'workflows', description: 'Delete workflow templates' },
+    
+    // Workflow template management (specific permissions)
+    { name: 'workflows.templates.create', module: 'workflows', description: 'Create workflow templates' },
+    { name: 'workflows.templates.read', module: 'workflows', description: 'View workflow templates' },
+    { name: 'workflows.templates.update', module: 'workflows', description: 'Update workflow templates' },
+    { name: 'workflows.templates.delete', module: 'workflows', description: 'Delete workflow templates' },
     
     // Delegation
     { name: 'delegations.create', module: 'delegations', description: 'Create delegations' },

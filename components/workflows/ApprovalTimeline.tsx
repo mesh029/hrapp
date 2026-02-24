@@ -27,10 +27,11 @@ export interface TimelineStep {
 export interface ApprovalTimelineProps {
   timeline: TimelineStep[];
   workflowStatus?: string;
+  templateName?: string;
   className?: string;
 }
 
-export function ApprovalTimeline({ timeline, workflowStatus, className }: ApprovalTimelineProps) {
+export function ApprovalTimeline({ timeline, workflowStatus, templateName, className }: ApprovalTimelineProps) {
   // Always show the timeline card, even if empty
   // This helps users understand the approval process
 
@@ -80,12 +81,19 @@ export function ApprovalTimeline({ timeline, workflowStatus, className }: Approv
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle>Approval Timeline</CardTitle>
-        {workflowStatus && (
-          <Badge className="mt-2 w-fit">
-            {workflowStatus}
-          </Badge>
-        )}
+        <CardTitle>Status History</CardTitle>
+        <div className="flex items-center gap-2 mt-2">
+          {templateName && (
+            <Badge variant="outline" className="text-xs">
+              Template: {templateName}
+            </Badge>
+          )}
+          {workflowStatus && (
+            <Badge className="w-fit">
+              {workflowStatus}
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {!timeline || timeline.length === 0 ? (

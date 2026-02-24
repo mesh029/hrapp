@@ -89,6 +89,16 @@ export async function DELETE(
       },
     });
 
+    // Clean up UserPermissionScope entries if user no longer has permission through other roles
+    try {
+      const { cleanupScopesForUserRole } = await import('@/lib/utils/sync-role-permissions');
+      const result = await cleanupScopesForUserRole(params.id, params.roleId);
+      console.log(`[User Role] Removed ${result.removed} scopes for user ${params.id} after removing role ${params.roleId}`);
+    } catch (cleanupError: any) {
+      // Log error but don't fail the request
+      console.error('[User Role] Failed to cleanup scopes:', cleanupError.message);
+    }
+
     // Return updated user
     const updatedUser = await prisma.user.findUnique({
       where: { id: params.id },

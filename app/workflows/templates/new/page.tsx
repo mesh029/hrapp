@@ -13,6 +13,7 @@ import { workflowService, CreateWorkflowTemplateData, WorkflowStep } from '@/ui/
 import { locationsService } from '@/ui/src/services/locations';
 import { permissionsService } from '@/ui/src/services/permissions';
 import { rolesService, Role, Permission } from '@/ui/src/services/roles';
+import { api } from '@/ui/src/services/api';
 import { useRouter } from 'next/navigation';
 import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
@@ -46,6 +47,8 @@ export default function NewWorkflowTemplatePage() {
   });
 
   const [locations, setLocations] = React.useState<Array<{ id: string; name: string }>>([]);
+  const [staffTypes, setStaffTypes] = React.useState<Array<{ id: string; code: string; name: string }>>([]);
+  const [leaveTypes, setLeaveTypes] = React.useState<Array<{ id: string; name: string }>>([]);
   const [permissions, setPermissions] = React.useState<Permission[]>([]);
   const [roles, setRoles] = React.useState<Role[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -60,6 +63,9 @@ export default function NewWorkflowTemplatePage() {
     name: '',
     resource_type: 'leave',
     location_id: '',
+    is_area_wide: false,
+    staff_type_id: null,
+    leave_type_id: null,
     steps: [
       {
         step_order: 1,
@@ -79,8 +85,10 @@ export default function NewWorkflowTemplatePage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [locationsRes, permissionsRes, rolesRes] = await Promise.all([
+      const [locationsRes, staffTypesRes, leaveTypesRes, permissionsRes, rolesRes] = await Promise.all([
         locationsService.getLocations(),
+        api.get('/api/staff-types'),
+        formData.resource_type === 'leave' ? api.get('/api/leave/types') : Promise.resolve({ success: true, data: { data: [] } }),
         permissionsService.getAllPermissions(),
         rolesService.getRoles(),
       ]);
@@ -92,6 +100,18 @@ export default function NewWorkflowTemplatePage() {
         if (Array.isArray(locs) && locs.length > 0 && !formData.location_id) {
           setFormData(prev => ({ ...prev, location_id: locs[0].id }));
         }
+      }
+      if (staffTypesRes.success && staffTypesRes.data) {
+        const staffTypesData = staffTypesRes.data as any;
+        // API returns { staffTypes: [...], pagination: {...} }
+        const staffTypesArray = staffTypesData.staffTypes || staffTypesData.data || staffTypesData || [];
+        setStaffTypes(Array.isArray(staffTypesArray) ? staffTypesArray : []);
+      }
+      if (leaveTypesRes.success && leaveTypesRes.data) {
+        const leaveTypesData = leaveTypesRes.data as any;
+        // API returns { data: [...] }
+        const leaveTypesArray = leaveTypesData.data || leaveTypesData || [];
+        setLeaveTypes(Array.isArray(leaveTypesArray) ? leaveTypesArray : []);
       }
       if (permissionsRes.success) {
         const permissionsData = permissionsRes.data as any;
@@ -314,6 +334,7 @@ export default function NewWorkflowTemplatePage() {
                 <Select
                   value={formData.location_id || undefined}
                   onValueChange={(value) => setFormData(prev => ({ ...prev, location_id: value }))}
+                  disabled={formData.is_area_wide}
                 >
                   <SelectTrigger id="location">
                     <SelectValue placeholder="Select a location" />
@@ -324,7 +345,71 @@ export default function NewWorkflowTemplatePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {formData.is_area_wide 
+                    ? 'Area-wide template: This template applies to all locations' 
+                    : 'Location-specific template: This template only applies to the selected location'}
+                </p>
               </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="is_area_wide">Area-Wide Template</Label>
+                  <Switch
+                    id="is_area_wide"
+                    checked={formData.is_area_wide || false}
+                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_area_wide: checked }))}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  When enabled, this template applies to all locations (area-wide). 
+                  When disabled, it only applies to the selected location (location-specific).
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="staff_type">Employee Type (Optional)</Label>
+                <Select
+                  value={formData.staff_type_id || '__none__'}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, staff_type_id: value === '__none__' ? null : value }))}
+                >
+                  <SelectTrigger id="staff_type">
+                    <SelectValue placeholder="All employee types (no filter)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">All Employee Types</SelectItem>
+                    {staffTypes.map(st => (
+                      <SelectItem key={st.id} value={st.id}>{st.name} ({st.code})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  If selected, this template will only apply to employees of this type
+                </p>
+              </div>
+
+              {formData.resource_type === 'leave' && (
+                <div className="space-y-2">
+                  <Label htmlFor="leave_type">Leave Type (Optional)</Label>
+                  <Select
+                    value={formData.leave_type_id || '__none__'}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, leave_type_id: value === '__none__' ? null : value }))}
+                  >
+                    <SelectTrigger id="leave_type">
+                      <SelectValue placeholder="All leave types (no filter)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">All Leave Types</SelectItem>
+                      {leaveTypes.map(lt => (
+                        <SelectItem key={lt.id} value={lt.id}>{lt.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    If selected, this template will only apply to this specific leave type
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -368,6 +453,7 @@ export default function NewWorkflowTemplatePage() {
                         onRemove={() => handleRemoveStep(index)}
                         onPreview={() => handlePreviewApprovers(step)}
                         canRemove={formData.steps.length > 1}
+                        roles={roles}
                       />
                     ))}
                   </SortableContext>
@@ -404,6 +490,7 @@ export default function NewWorkflowTemplatePage() {
           stepIndex={editingStepIndex || 0}
           permissions={permissions}
           roles={roles}
+          locations={locations}
           resourceType={formData.resource_type}
           onClose={() => {
             setConfigDialogOpen(false);

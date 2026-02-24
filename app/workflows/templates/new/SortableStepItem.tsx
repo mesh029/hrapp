@@ -15,6 +15,7 @@ interface SortableStepItemProps {
   onRemove: () => void;
   onPreview: () => void;
   canRemove: boolean;
+  roles?: Array<{ id: string; name: string }>; // Optional roles list to map role IDs to names
 }
 
 export function SortableStepItem({
@@ -24,6 +25,7 @@ export function SortableStepItem({
   onRemove,
   onPreview,
   canRemove,
+  roles = [],
 }: SortableStepItemProps) {
   const {
     attributes,
@@ -82,11 +84,37 @@ export function SortableStepItem({
             </div>
             <div className="text-sm">
               <div className="font-medium">Permission: {step.required_permission || 'Not set'}</div>
-              {step.required_roles && step.required_roles.length > 0 && (
-                <div className="text-muted-foreground mt-1">
-                  Roles: {step.required_roles.length} selected
-                </div>
-              )}
+              {(() => {
+                // Handle both string (JSON) and array formats
+                let roleIds: string[] = [];
+                if (step.required_roles) {
+                  if (Array.isArray(step.required_roles)) {
+                    roleIds = step.required_roles;
+                  } else if (typeof step.required_roles === 'string') {
+                    try {
+                      roleIds = JSON.parse(step.required_roles);
+                    } catch {
+                      roleIds = [];
+                    }
+                  }
+                }
+                
+                return roleIds.length > 0 ? (
+                  <div className="mt-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Required Roles:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {roleIds.map((roleId: string) => {
+                        const role = roles.find(r => r.id === roleId);
+                        return (
+                          <Badge key={roleId} variant="secondary" className="text-xs">
+                            {role ? role.name : roleId}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
               <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                 {step.allow_decline && <span>✓ Can Decline</span>}
                 {step.allow_adjust && <span>✓ Can Adjust</span>}

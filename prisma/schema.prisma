@@ -301,35 +301,41 @@ model WorkflowTemplate {
   name          String
   resource_type ResourceType
   location_id   String
+  is_area_wide  Boolean                @default(false) // If true, template applies to all locations (area-wide), if false, only to specific location
+  staff_type_id String? // Optional: filter by employee type (e.g., HRH, Regular, etc.)
+  leave_type_id String? // Optional: filter by leave type (only for leave workflows)
   version       Int                    @default(1)
   status        WorkflowTemplateStatus @default(active)
   created_at    DateTime               @default(now())
 
-  location  Location           @relation(fields: [location_id], references: [id], onDelete: Cascade)
-  steps     WorkflowStep[]
-  instances WorkflowInstance[]
+  location   Location           @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  staff_type StaffType?         @relation(fields: [staff_type_id], references: [id], onDelete: SetNull)
+  leave_type LeaveType?         @relation(fields: [leave_type_id], references: [id], onDelete: SetNull)
+  steps      WorkflowStep[]
+  instances  WorkflowInstance[]
 
   @@index([resource_type, location_id, status])
+  @@index([resource_type, location_id, staff_type_id, leave_type_id, status])
   @@index([id, version])
   @@map("workflow_templates")
 }
 
 model WorkflowStep {
-  id                   String   @id @default(uuid())
+  id                   String  @id @default(uuid())
   workflow_template_id String
   step_order           Int
   required_permission  String
-  allow_decline        Boolean  @default(true)
-  allow_adjust         Boolean  @default(false)
-  
+  allow_decline        Boolean @default(true)
+  allow_adjust         Boolean @default(false)
+
   // Approver Resolution Configuration
-  approver_strategy    String?  @default("permission") // "permission" | "manager" | "role" | "combined"
-  include_manager      Boolean  @default(false) // Include employee's manager as approver
-  required_roles       Json?    // Array of role IDs for role-based resolution
-  location_scope       String?  @default("same") // "same" | "parent" | "descendants" | "all"
-  conditional_rules    Json?    // Array of conditional routing rules
-  
-  created_at           DateTime @default(now())
+  approver_strategy String? @default("permission") // "permission" | "manager" | "role" | "combined"
+  include_manager   Boolean @default(false) // Include employee's manager as approver
+  required_roles    Json? // Array of role IDs for role-based resolution
+  location_scope    String? @default("same") // "same" | "parent" | "descendants" | "all"
+  conditional_rules Json? // Array of conditional routing rules
+
+  created_at DateTime @default(now())
 
   template WorkflowTemplate @relation(fields: [workflow_template_id], references: [id], onDelete: Cascade)
 
@@ -400,6 +406,7 @@ model StaffType {
   work_hours_configs WorkHoursConfig[]
   accrual_configs    LeaveAccrualConfig[]
   users              User[]
+  workflow_templates WorkflowTemplate[]
 
   @@index([status, deleted_at])
   @@index([code])
@@ -423,6 +430,7 @@ model LeaveType {
   accrual_configs           LeaveAccrualConfig[]
   leave_balance_resets      LeaveBalanceReset[]
   leave_balance_adjustments LeaveBalanceAdjustment[]
+  workflow_templates        WorkflowTemplate[]
 
   @@index([status, deleted_at])
   @@map("leave_types")

@@ -102,6 +102,16 @@ export async function PATCH(
       }
     }
 
+    // Get template ID for scope syncing
+    const existingStep = await prisma.workflowStep.findUnique({
+      where: { id: params.stepId },
+      select: { workflow_template_id: true },
+    });
+
+    if (!existingStep) {
+      return notFoundResponse('Workflow step not found');
+    }
+
     // Update step
     const updatedStep = await prisma.workflowStep.update({
       where: { id: params.stepId },
@@ -113,14 +123,35 @@ export async function PATCH(
         ...(validation.data.approver_strategy !== undefined && { approver_strategy: validation.data.approver_strategy }),
         ...(validation.data.include_manager !== undefined && { include_manager: validation.data.include_manager }),
         ...(validation.data.required_roles !== undefined && { 
-          required_roles: validation.data.required_roles ? JSON.stringify(validation.data.required_roles) : null 
+          required_roles: (validation.data.required_roles && validation.data.required_roles.length > 0)
+            ? JSON.stringify(validation.data.required_roles)
+            : null 
         }),
         ...(validation.data.location_scope !== undefined && { location_scope: validation.data.location_scope }),
         ...(validation.data.conditional_rules !== undefined && { 
-          conditional_rules: validation.data.conditional_rules ? JSON.stringify(validation.data.conditional_rules) : null 
+          conditional_rules: (validation.data.conditional_rules && validation.data.conditional_rules.length > 0)
+            ? JSON.stringify(validation.data.conditional_rules)
+            : null 
         }),
       },
     });
+
+    // Sync UserPermissionScope entries if roles or location_scope changed
+    if (validation.data.required_roles !== undefined || validation.data.location_scope !== undefined) {
+      const rolesToSync = validation.data.required_roles || 
+        (updatedStep.required_roles ? JSON.parse(updatedStep.required_roles as string) : []);
+      
+      if (rolesToSync.length > 0) {
+        try {
+          const { syncScopesForWorkflowStep } = await import('@/lib/utils/sync-workflow-scopes');
+          const result = await syncScopesForWorkflowStep(params.stepId, existingStep.workflow_template_id);
+          console.log(`[Workflow Step] Updated scopes: created ${result.created}, skipped ${result.skipped}, errors: ${result.errors} for step ${updatedStep.step_order}`);
+        } catch (syncError: any) {
+          // Log error but don't fail the request
+          console.error('[Workflow Step] Failed to sync scopes:', syncError.message);
+        }
+      }
+    }
 
     return successResponse(updatedStep);
   } catch (error: any) {

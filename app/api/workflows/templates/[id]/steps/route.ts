@@ -104,11 +104,28 @@ export async function POST(
         allow_adjust: validation.data.allow_adjust,
         approver_strategy: validation.data.approver_strategy || 'permission',
         include_manager: validation.data.include_manager || false,
-        required_roles: validation.data.required_roles ? JSON.stringify(validation.data.required_roles) : null,
-        location_scope: validation.data.location_scope || 'same',
-        conditional_rules: validation.data.conditional_rules ? JSON.stringify(validation.data.conditional_rules) : null,
+        required_roles: (validation.data.required_roles && validation.data.required_roles.length > 0) 
+          ? JSON.stringify(validation.data.required_roles) 
+          : null,
+        location_scope: validation.data.location_scope || 'all',
+        conditional_rules: (validation.data.conditional_rules && validation.data.conditional_rules.length > 0)
+          ? JSON.stringify(validation.data.conditional_rules)
+          : null,
       },
     });
+
+    // Sync UserPermissionScope entries based on workflow step configuration
+    // This ensures users with required roles have scopes at the correct locations
+    if (validation.data.required_roles && validation.data.required_roles.length > 0) {
+      try {
+        const { syncScopesForWorkflowStep } = await import('@/lib/utils/sync-workflow-scopes');
+        const result = await syncScopesForWorkflowStep(step.id, params.id);
+        console.log(`[Workflow Step] Created ${result.created} scopes, skipped ${result.skipped}, errors: ${result.errors} for step ${step.step_order}`);
+      } catch (syncError: any) {
+        // Log error but don't fail the request - scopes can be created manually if needed
+        console.error('[Workflow Step] Failed to sync scopes:', syncError.message);
+      }
+    }
 
     return successResponse(step, undefined, 201);
   } catch (error: any) {

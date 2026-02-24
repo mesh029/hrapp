@@ -114,3 +114,78 @@ export async function GET(
     return errorResponse(error.message || 'Failed to retrieve timesheet', 500);
   }
 }
+
+/**
+ * DELETE /api/timesheets/:id
+ * Soft delete a timesheet (admin only)
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const user = await authenticate(request);
+    if (!user) {
+      return errorResponse('Unauthorized', 401);
+    }
+
+    // Check permission - admin only
+    const userWithLocation = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    // Check for timesheet.delete permission or system.admin
+    const hasDeletePermission = await checkPermission(user, 'timesheet.delete', { locationId });
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId });
+
+    if (!hasDeletePermission && !isAdmin) {
+      return errorResponse('Forbidden: Only administrators can delete timesheets', 403);
+    }
+
+    uuidSchema.parse(params.id);
+
+    // Check if timesheet exists
+    const existing = await prisma.timesheet.findUnique({
+      where: { id: params.id },
+      select: {
+        id: true,
+        user_id: true,
+        status: true,
+        deleted_at: true,
+      },
+    });
+
+    if (!existing || existing.deleted_at) {
+      return errorResponse('Timesheet not found', 404);
+    }
+
+    // Soft delete
+    const deletedTimesheet = await prisma.timesheet.update({
+      where: { id: params.id },
+      data: { deleted_at: new Date() },
+      select: {
+        id: true,
+        status: true,
+        deleted_at: true,
+      },
+    });
+
+    return successResponse(deletedTimesheet, 'Timesheet deleted successfully');
+  } catch (error: any) {
+    console.error('Delete timesheet error:', error);
+    if (error.name === 'ZodError') {
+      return errorResponse('Validation error: ' + error.errors[0].message, 400);
+    }
+    if (error.message.includes('Unauthorized') || error.message.includes('Forbidden')) {
+      return errorResponse(error.message, 403);
+    }
+    return errorResponse(error.message || 'Failed to delete timesheet', 500);
+  }
+}

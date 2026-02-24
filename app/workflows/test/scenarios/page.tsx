@@ -23,6 +23,8 @@ interface TestUser {
   location_id: string;
   manager_id?: string;
   is_employee?: boolean; // The one who submits
+  use_existing?: boolean; // Whether to use existing user from system
+  existing_user_id?: string; // ID of existing user if use_existing is true
 }
 
 interface TestScenario {
@@ -133,8 +135,13 @@ export default function TestScenariosPage() {
       alert('Scenario name is required');
       return;
     }
-    if (currentScenario.users.some(u => !u.name || !u.email || !u.role_id || !u.location_id)) {
-      alert('All users must have name, email, role, and location');
+    if (currentScenario.users.some(u => {
+      if (u.use_existing) {
+        return !u.existing_user_id;
+      }
+      return !u.name || !u.email || !u.role_id || !u.location_id;
+    })) {
+      alert('All users must be properly configured (either select existing user or provide name, email, role, and location)');
       return;
     }
     if (currentScenario.users.filter(u => u.is_employee).length !== 1) {
@@ -297,24 +304,89 @@ export default function TestScenariosPage() {
                         )}
                       </div>
 
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id={`use-existing-${index}`}
+                            checked={user.use_existing || false}
+                            onChange={(e) => {
+                              const newUsers = [...currentScenario.users];
+                              newUsers[index] = {
+                                ...newUsers[index],
+                                use_existing: e.target.checked,
+                                existing_user_id: e.target.checked ? undefined : newUsers[index].existing_user_id,
+                                name: e.target.checked ? '' : newUsers[index].name,
+                                email: e.target.checked ? '' : newUsers[index].email,
+                                role_id: e.target.checked ? '' : newUsers[index].role_id,
+                                location_id: e.target.checked ? '' : newUsers[index].location_id,
+                              };
+                              setCurrentScenario({ ...currentScenario, users: newUsers });
+                            }}
+                            className="rounded"
+                          />
+                          <Label htmlFor={`use-existing-${index}`} className="cursor-pointer">
+                            Use existing user from system
+                          </Label>
+                        </div>
+
+                        {user.use_existing ? (
+                          <div className="space-y-2">
+                            <Label>Select User *</Label>
+                            <Select
+                              value={user.existing_user_id || undefined}
+                              onValueChange={(value) => {
+                                const selectedUser = existingUsers.find(u => u.id === value);
+                                if (selectedUser) {
+                                  handleUserChange(index, 'existing_user_id', value);
+                                  // Fetch user details to populate role and location
+                                  usersService.getUser(value).then((res) => {
+                                    if (res.success && res.data) {
+                                      const userData = res.data as any;
+                                      handleUserChange(index, 'name', userData.name || '');
+                                      handleUserChange(index, 'email', userData.email || '');
+                                      // Note: role_id and location_id would need to be fetched from user's roles/locations
+                                    }
+                                  }).catch(console.error);
+                                }
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select existing user" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {existingUsers.map(u => (
+                                  <SelectItem key={u.id} value={u.id}>
+                                    {u.name} ({u.email})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>Name *</Label>
+                              <Input
+                                value={user.name}
+                                onChange={(e) => handleUserChange(index, 'name', e.target.value)}
+                                placeholder="John Employee"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Email *</Label>
+                              <Input
+                                type="email"
+                                value={user.email}
+                                onChange={(e) => handleUserChange(index, 'email', e.target.value)}
+                                placeholder="john@example.com"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Name *</Label>
-                          <Input
-                            value={user.name}
-                            onChange={(e) => handleUserChange(index, 'name', e.target.value)}
-                            placeholder="John Employee"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Email *</Label>
-                          <Input
-                            type="email"
-                            value={user.email}
-                            onChange={(e) => handleUserChange(index, 'email', e.target.value)}
-                            placeholder="john@example.com"
-                          />
-                        </div>
                         <div className="space-y-2">
                           <Label>Role *</Label>
                           <Select

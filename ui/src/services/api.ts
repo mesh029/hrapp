@@ -57,10 +57,21 @@ class ApiClient {
   ): Promise<T> {
     const { skipAuth = false, ...fetchOptions } = options;
     
-    // Use proxy route if API_BASE_URL is set, otherwise use Next.js API routes
+    // Determine if this is a Next.js API route or Docker API route
+    // Next.js API routes: /api/workflows, /api/leave, /api/timesheets, /api/users, /api/admin, /api/delegations
+    // Docker API routes: everything else
+    const isNextJsRoute = endpoint.startsWith('/api/workflows') ||
+                         endpoint.startsWith('/api/leave') ||
+                         endpoint.startsWith('/api/timesheets') ||
+                         endpoint.startsWith('/api/users') ||
+                         endpoint.startsWith('/api/admin') ||
+                         endpoint.startsWith('/api/delegations') ||
+                         endpoint.startsWith('/api/auth') ||
+                         endpoint.startsWith('/api/reports');
+    
     let url: string;
-    if (API_BASE_URL) {
-      // Proxy route - remove /api prefix if present since proxy adds it
+    if (API_BASE_URL && !isNextJsRoute) {
+      // Proxy route for Docker API - remove /api prefix if present since proxy adds it
       const cleanEndpoint = endpoint.startsWith('/api/') 
         ? endpoint.substring(4) // Remove '/api'
         : endpoint.startsWith('/') 

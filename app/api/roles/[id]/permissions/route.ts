@@ -173,6 +173,16 @@ export async function POST(
       },
     });
 
+    // Automatically create UserPermissionScope entries for all users with this role
+    try {
+      const { syncScopesForRolePermission } = await import('@/lib/utils/sync-role-permissions');
+      const result = await syncScopesForRolePermission(params.id, validation.data.permissionId);
+      console.log(`[Role Permission] Created ${result.created} scopes, skipped ${result.skipped} existing scopes for role ${params.id}`);
+    } catch (syncError: any) {
+      // Log error but don't fail the request - scopes can be created manually if needed
+      console.error('[Role Permission] Failed to sync scopes:', syncError.message);
+    }
+
     // Return updated role with permissions
     const updatedRole = await prisma.role.findUnique({
       where: { id: params.id },

@@ -9,7 +9,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { usersService } from '@/ui/src/services/users';
+import { rolesService, Role } from '@/ui/src/services/roles';
 import { api } from '@/ui/src/services/api';
+import { Badge } from '@/components/ui/badge';
+import { Plus, X } from 'lucide-react';
 
 export default function EditUserPage() {
   const router = useRouter();
@@ -21,6 +24,9 @@ export default function EditUserPage() {
   const [error, setError] = React.useState('');
   const [locations, setLocations] = React.useState<any[]>([]);
   const [managers, setManagers] = React.useState<any[]>([]);
+  const [roles, setRoles] = React.useState<Role[]>([]);
+  const [userRoles, setUserRoles] = React.useState<Role[]>([]);
+  const [selectedRoleId, setSelectedRoleId] = React.useState('');
 
   const [formData, setFormData] = React.useState({
     name: '',
@@ -37,6 +43,7 @@ export default function EditUserPage() {
       loadUser();
       loadLocations();
       loadManagers();
+      loadRoles();
     }
   }, [userId]);
 
@@ -55,11 +62,62 @@ export default function EditUserPage() {
           primary_location_id: user.primary_location_id || '',
           manager_id: user.manager_id || '',
         });
+        // Load user roles
+        if (user.user_roles && Array.isArray(user.user_roles)) {
+          setUserRoles(user.user_roles.map((ur: any) => ur.role).filter(Boolean));
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load user');
     } finally {
       setIsLoadingUser(false);
+    }
+  };
+
+  const loadRoles = async () => {
+    try {
+      const response = await rolesService.getRoles();
+      if (response.success && response.data) {
+        setRoles(response.data.roles || []);
+      }
+    } catch (error) {
+      console.error('Failed to load roles:', error);
+    }
+  };
+
+  const handleAssignRole = async () => {
+    if (!selectedRoleId) return;
+
+    try {
+      const response = await api.post(`/api/users/${userId}/roles`, {
+        roleId: selectedRoleId,
+      });
+
+      if (response.success) {
+        // Reload user to get updated roles
+        await loadUser();
+        setSelectedRoleId('');
+      } else {
+        alert(response.message || 'Failed to assign role');
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to assign role');
+    }
+  };
+
+  const handleRemoveRole = async (roleId: string) => {
+    if (!confirm('Are you sure you want to remove this role?')) return;
+
+    try {
+      const response = await api.delete(`/api/users/${userId}/roles/${roleId}`);
+      if (response.success) {
+        // Reload user to get updated roles
+        await loadUser();
+      } else {
+        alert(response.message || 'Failed to remove role');
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to remove role');
     }
   };
 
@@ -247,6 +305,65 @@ export default function EditUserPage() {
                       <option value="suspended">Suspended</option>
                     </select>
                   </div>
+                </div>
+              </div>
+
+              {/* Role Assignment */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Roles</h3>
+                <div className="space-y-4">
+                  {/* Current Roles */}
+                  <div>
+                    <Label>Assigned Roles</Label>
+                    {userRoles.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {userRoles.map((role) => (
+                          <Badge key={role.id} variant="default" className="flex items-center gap-1">
+                            {role.name}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveRole(role.id)}
+                              className="ml-1 hover:text-destructive"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground mt-2">No roles assigned</p>
+                    )}
+                  </div>
+
+                  {/* Assign New Role */}
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedRoleId}
+                      onChange={(e) => setSelectedRoleId(e.target.value)}
+                      className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <option value="">Select a role to assign...</option>
+                      {roles
+                        .filter(role => !userRoles.find(ur => ur.id === role.id))
+                        .map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.name}
+                          </option>
+                        ))}
+                    </select>
+                    <Button
+                      type="button"
+                      onClick={handleAssignRole}
+                      disabled={!selectedRoleId || isLoading}
+                      size="sm"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Assign Role
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    💡 Note: "Manager" is not a role - it's a relationship. Use the "Manager" field above to assign a manager to this user.
+                  </p>
                 </div>
               </div>
 

@@ -15,6 +15,7 @@ const createUserSchema = z.object({
   status: z.enum(['active', 'suspended', 'deactivated']).optional().default('active'),
   staff_number: z.string().optional().nullable(), // Optional unique staff number
   charge_code: z.string().optional().nullable(), // Optional charge code
+  roleIds: z.array(z.string().uuid()).optional(), // Optional role IDs to assign
 });
 
 /**
@@ -79,6 +80,14 @@ export async function GET(request: NextRequest) {
           manager_id: true,
           staff_number: true,
           charge_code: true,
+          staff_type_id: true,
+          staff_type: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
           primary_location: {
             select: {
               id: true,
@@ -145,7 +154,7 @@ export async function POST(request: NextRequest) {
       return errorResponse('Validation failed', 400, validationResult.error.flatten().fieldErrors);
     }
 
-    const { name, email, password, primary_location_id, manager_id, status, staff_number, charge_code } = validationResult.data;
+    const { name, email, password, primary_location_id, manager_id, status, staff_number, charge_code, roleIds } = validationResult.data;
 
     // Check if email already exists
     const existingEmail = await prisma.user.findUnique({
@@ -218,7 +227,65 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return successResponse(newUser, 'User created successfully', 201);
+    // Assign roles if provided
+    if (roleIds && roleIds.length > 0) {
+      // Validate all roles exist and are active
+      const roles = await prisma.role.findMany({
+        where: {
+          id: { in: roleIds },
+          status: 'active',
+        },
+      });
+
+      if (roles.length !== roleIds.length) {
+        return errorResponse('One or more roles not found or inactive', 400);
+      }
+
+      // Assign roles
+      await prisma.userRole.createMany({
+        data: roleIds.map(roleId => ({
+          user_id: newUser.id,
+          role_id: roleId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    // Auto-sync Manager role for the manager (if assigned)
+    if (manager_id) {
+      const { syncManagerRole } = await import('@/lib/utils/manager-role');
+      await syncManagerRole(manager_id).catch(err => {
+        console.error('Failed to sync Manager role for manager:', err);
+      });
+    }
+
+    // Return user with roles
+    const userWithRoles = await prisma.user.findUnique({
+      where: { id: newUser.id },
+      include: {
+        user_roles: {
+          where: { deleted_at: null },
+          include: {
+            role: {
+              select: {
+                id: true,
+                name: true,
+                status: true,
+              },
+            },
+          },
+        },
+        manager: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    return successResponse(userWithRoles, 'User created successfully', 201);
   } catch (error: any) {
     console.error('Create user error:', error);
     if (error.message.includes('Unauthorized') || error.message.includes('Forbidden')) {

@@ -5,6 +5,7 @@
   "scripts": {
     "verify:setup": "tsx scripts/verify-setup.ts",
     "prebuild": "npm run verify:setup",
+    "predev": "prisma generate",
     "dev": "next dev -p ${PORT:-3001}",
     "build": "prisma generate && next build",
     "start": "next start",
@@ -14,6 +15,8 @@
     "db:studio": "prisma studio",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:users": "tsx scripts/seed-comprehensive-users.ts",
+    "db:create-admin": "tsx scripts/create-admin-user.ts",
     "check:permissions": "tsx scripts/check-permission-api-usage.ts",
     "fix:permissions": "tsx scripts/fix-permission-calls.ts",
     "test:timesheet": "tsx scripts/test-timesheet-scenarios.ts",
@@ -28,7 +31,18 @@
     "test:phase4-casual": "tsx scripts/test-phase4-casual-employee.ts",
     "test:phase4-robust": "tsx scripts/test-phase4-robust-workflows.ts",
     "test:phase5-laundry": "tsx scripts/test-phase5-laundry-worker.ts",
-    "test:phase6-integration": "tsx scripts/test-phase6-integration.ts"
+    "test:phase6-integration": "tsx scripts/test-phase6-integration.ts",
+    "test:workflow-templates": "tsx scripts/test-workflow-template-creation.ts",
+    "cleanup:level-permissions": "tsx scripts/remove-level-permissions.ts",
+    "fix:location-scope": "tsx scripts/fix-location-scope-defaults.ts",
+    "backfill:user-scopes": "tsx scripts/backfill-user-permission-scopes.ts",
+    "sync:workflow-scopes": "tsx scripts/sync-workflow-step-scopes.ts",
+    "sync:resource-status": "tsx scripts/sync-resource-status-with-workflow.ts",
+    "create:workflow-permissions": "tsx scripts/create-workflow-template-permissions.ts",
+    "sync:admin-workflow-permissions": "tsx scripts/sync-admin-workflow-permissions.ts",
+    "fix:manager-only-steps": "tsx scripts/fix-manager-only-steps.ts",
+    "debug:workflow-approvers": "tsx scripts/debug-workflow-approvers.ts",
+    "check:susan-workflow": "tsx scripts/check-susan-workflow.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

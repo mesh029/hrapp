@@ -360,35 +360,31 @@ async function main() {
     console.log('📋 SCENARIO 2: 5-STEP LEAVE APPROVAL');
     console.log('='.repeat(80));
 
-    // Create 5-level permissions
-    const levelPermissions = [];
-    for (let i = 1; i <= 5; i++) {
-      let perm = await prisma.permission.findFirst({
-        where: { name: `leave.approve.level${i}` },
+    // Find or create leave.approve permission
+    let leaveApprovePermission = await prisma.permission.findFirst({
+      where: { name: 'leave.approve' },
+    });
+    if (!leaveApprovePermission) {
+      leaveApprovePermission = await prisma.permission.create({
+        data: {
+          name: 'leave.approve',
+          description: 'Leave approval permission - workflow determines which step approvers come in',
+          module: 'leave',
+        },
       });
-      if (!perm) {
-        perm = await prisma.permission.create({
-          data: {
-            name: `leave.approve.level${i}`,
-            description: `Level ${i} leave approval permission`,
-            category: 'leave',
-          },
-        });
-      }
-      levelPermissions.push(perm);
     }
 
-    // Create 5 approvers with level permissions
+    // Create 5 approvers with leave.approve permission
     const fiveStepApprovers = [];
     for (let i = 0; i < 5; i++) {
       const role = await prisma.role.create({
         data: {
-          name: `Level ${i + 1} Approver`,
-          description: `Level ${i + 1} approval role`,
+          name: `Step ${i + 1} Approver`,
+          description: `Step ${i + 1} approval role`,
           status: 'active',
           role_permissions: {
             create: {
-              permission_id: levelPermissions[i].id,
+              permission_id: leaveApprovePermission.id,
             },
           },
         },
@@ -396,8 +392,8 @@ async function main() {
 
       const approver = await prisma.user.create({
         data: {
-          name: `Level ${i + 1} Approver`,
-          email: `level${i + 1}-${Date.now()}@test.com`,
+          name: `Step ${i + 1} Approver`,
+          email: `step${i + 1}-${Date.now()}@test.com`,
           password_hash: await hashPassword('TestPassword123!'),
           primary_location_id: location.id,
           status: 'active',
@@ -412,7 +408,7 @@ async function main() {
       await prisma.userPermissionScope.create({
         data: {
           user_id: approver.id,
-          permission_id: levelPermissions[i].id,
+          permission_id: leaveApprovePermission.id,
           location_id: location.id,
           status: 'active',
           is_global: false,
@@ -443,11 +439,11 @@ async function main() {
           status: 'active',
           steps: {
             create: [
-              { step_order: 1, required_permission: 'leave.approve.level1', allow_decline: true, allow_adjust: true },
-              { step_order: 2, required_permission: 'leave.approve.level2', allow_decline: true, allow_adjust: false },
-              { step_order: 3, required_permission: 'leave.approve.level3', allow_decline: true, allow_adjust: false },
-              { step_order: 4, required_permission: 'leave.approve.level4', allow_decline: true, allow_adjust: false },
-              { step_order: 5, required_permission: 'leave.approve.level5', allow_decline: false, allow_adjust: false },
+              { step_order: 1, required_permission: 'leave.approve', allow_decline: true, allow_adjust: true },
+              { step_order: 2, required_permission: 'leave.approve', allow_decline: true, allow_adjust: false },
+              { step_order: 3, required_permission: 'leave.approve', allow_decline: true, allow_adjust: false },
+              { step_order: 4, required_permission: 'leave.approve', allow_decline: true, allow_adjust: false },
+              { step_order: 5, required_permission: 'leave.approve', allow_decline: false, allow_adjust: false },
             ],
           },
         },

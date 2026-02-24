@@ -7,9 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, X } from 'lucide-react';
 import { usersService } from '@/ui/src/services/users';
+import { rolesService, Role } from '@/ui/src/services/roles';
 import { api } from '@/ui/src/services/api';
+import { Badge } from '@/components/ui/badge';
 
 export default function CreateUserPage() {
   const router = useRouter();
@@ -17,6 +19,9 @@ export default function CreateUserPage() {
   const [error, setError] = React.useState('');
   const [locations, setLocations] = React.useState<any[]>([]);
   const [managers, setManagers] = React.useState<any[]>([]);
+  const [roles, setRoles] = React.useState<Role[]>([]);
+  const [selectedRoleIds, setSelectedRoleIds] = React.useState<string[]>([]);
+  const [selectedRoleId, setSelectedRoleId] = React.useState('');
 
   const [formData, setFormData] = React.useState({
     name: '',
@@ -33,6 +38,7 @@ export default function CreateUserPage() {
   React.useEffect(() => {
     loadLocations();
     loadManagers();
+    loadRoles();
   }, []);
 
   const loadLocations = async () => {
@@ -55,6 +61,28 @@ export default function CreateUserPage() {
     } catch (error) {
       console.error('Failed to load managers:', error);
     }
+  };
+
+  const loadRoles = async () => {
+    try {
+      const response = await rolesService.getRoles();
+      if (response.success && response.data) {
+        setRoles(response.data.roles || []);
+      }
+    } catch (error) {
+      console.error('Failed to load roles:', error);
+    }
+  };
+
+  const handleAddRole = () => {
+    if (selectedRoleId && !selectedRoleIds.includes(selectedRoleId)) {
+      setSelectedRoleIds([...selectedRoleIds, selectedRoleId]);
+      setSelectedRoleId('');
+    }
+  };
+
+  const handleRemoveRole = (roleId: string) => {
+    setSelectedRoleIds(selectedRoleIds.filter(id => id !== roleId));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -82,6 +110,7 @@ export default function CreateUserPage() {
         manager_id: userData.manager_id || undefined,
         staff_number: userData.staff_number || undefined,
         charge_code: userData.charge_code || undefined,
+        roleIds: selectedRoleIds.length > 0 ? selectedRoleIds : undefined,
       });
 
       console.log('Create user response:', response); // Debug log
@@ -254,6 +283,70 @@ export default function CreateUserPage() {
                       <option value="suspended">Suspended</option>
                     </select>
                   </div>
+                </div>
+              </div>
+
+              {/* Role Assignment */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Roles</h3>
+                <div className="space-y-4">
+                  {/* Selected Roles */}
+                  <div>
+                    <Label>Assigned Roles</Label>
+                    {selectedRoleIds.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {selectedRoleIds.map((roleId) => {
+                          const role = roles.find(r => r.id === roleId);
+                          return role ? (
+                            <Badge key={roleId} variant="default" className="flex items-center gap-1">
+                              {role.name}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRole(roleId)}
+                                className="ml-1 hover:text-destructive"
+                                disabled={isLoading}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ) : null;
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground mt-2">No roles selected</p>
+                    )}
+                  </div>
+
+                  {/* Assign New Role */}
+                  <div className="flex gap-2">
+                    <select
+                      value={selectedRoleId}
+                      onChange={(e) => setSelectedRoleId(e.target.value)}
+                      disabled={isLoading}
+                      className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <option value="">Select a role to assign...</option>
+                      {roles
+                        .filter(role => !selectedRoleIds.includes(role.id))
+                        .map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.name}
+                          </option>
+                        ))}
+                    </select>
+                    <Button
+                      type="button"
+                      onClick={handleAddRole}
+                      disabled={!selectedRoleId || isLoading}
+                      size="sm"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Role
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    💡 Note: "Manager" is not a role - it's a relationship. Use the "Manager" field above to assign a manager to this user. Roles can be assigned permissions, which determine what actions users can perform.
+                  </p>
                 </div>
               </div>
 

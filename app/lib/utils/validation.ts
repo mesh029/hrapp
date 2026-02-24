@@ -92,17 +92,32 @@ export const createWorkflowTemplateSchema = z.object({
   name: z.string().min(1).max(255),
   resource_type: z.enum(['leave', 'timesheet']),
   location_id: z.string().uuid(),
+  is_area_wide: z.boolean().default(false).optional(), // If true, template applies area-wide (all locations)
+  staff_type_id: z.string().uuid().nullable().optional(), // Optional: filter by employee type
+  leave_type_id: z.string().uuid().nullable().optional(), // Optional: filter by leave type (only for leave workflows)
   steps: z.array(z.object({
     step_order: z.number().int().positive(),
     required_permission: z.string().min(1),
     allow_decline: z.boolean().default(true),
     allow_adjust: z.boolean().default(false),
   })).min(1, 'At least one step is required'),
-});
+}).refine(
+  (data) => {
+    // leave_type_id should only be set for leave workflows
+    if (data.leave_type_id && data.resource_type !== 'leave') {
+      return false;
+    }
+    return true;
+  },
+  { message: 'leave_type_id can only be set for leave workflows' }
+);
 
 export const updateWorkflowTemplateSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   status: z.enum(['active', 'deprecated']).optional(),
+  is_area_wide: z.boolean().optional(), // If true, template applies area-wide (all locations)
+  staff_type_id: z.string().uuid().nullable().optional(),
+  leave_type_id: z.string().uuid().nullable().optional(),
 });
 
 /**
@@ -116,12 +131,9 @@ export const createWorkflowStepSchema = z.object({
   // Approver Resolution Configuration
   approver_strategy: z.enum(['permission', 'manager', 'role', 'combined']).optional().default('permission'),
   include_manager: z.boolean().optional().default(false),
-  required_roles: z.array(z.string().uuid()).optional(),
+  required_roles: z.array(z.string().uuid()).optional().nullable(),
   location_scope: z.enum(['same', 'parent', 'descendants', 'all']).optional().default('same'),
-  conditional_rules: z.array(z.object({
-    condition: z.string(),
-    approver_strategy: z.string(),
-  })).optional(),
+  conditional_rules: z.array(z.any()).optional().nullable(), // Allow any structure for conditional_rules (includes _metadata)
 });
 
 export const updateWorkflowStepSchema = z.object({
@@ -131,12 +143,9 @@ export const updateWorkflowStepSchema = z.object({
   allow_adjust: z.boolean().optional(),
   approver_strategy: z.enum(['permission', 'manager', 'role', 'combined']).optional(),
   include_manager: z.boolean().optional(),
-  required_roles: z.array(z.string().uuid()).optional(),
+  required_roles: z.array(z.string().uuid()).optional().nullable(),
   location_scope: z.enum(['same', 'parent', 'descendants', 'all']).optional(),
-  conditional_rules: z.array(z.object({
-    condition: z.string(),
-    approver_strategy: z.string(),
-  })).optional(),
+  conditional_rules: z.array(z.any()).optional().nullable(), // Allow any structure for conditional_rules (includes _metadata)
 });
 
 /**

@@ -93,39 +93,36 @@ async function main() {
     console.log('\n📋 TEST 1: Create 5-Level Leave Approval Permissions');
     console.log('-'.repeat(80));
 
-    const permissions = [];
-    for (let i = 1; i <= 5; i++) {
-      process.stdout.write(`   Creating leave.approve.level${i} permission... `);
-      try {
-        const permission = await prisma.permission.upsert({
-          where: { name: `leave.approve.level${i}` },
-          update: {},
-          create: {
-            name: `leave.approve.level${i}`,
-            module: 'leave',
-            description: `Level ${i} leave approval permission`,
-          },
-        });
-        permissions.push(permission);
-        console.log('✅');
-      } catch (error: any) {
-        console.log('❌');
-        logIssue(
-          `Failed to create leave.approve.level${i} permission`,
-          error.message,
-          false
-        );
-        throw error;
-      }
+    // Create single leave.approve permission
+    process.stdout.write(`   Creating leave.approve permission... `);
+    try {
+      const permission = await prisma.permission.upsert({
+        where: { name: `leave.approve` },
+        update: {},
+        create: {
+          name: `leave.approve`,
+          module: 'leave',
+          description: `Leave approval permission - workflow determines which step approvers come in`,
+        },
+      });
+      console.log('✅');
+    } catch (error: any) {
+      console.log('❌');
+      logIssue(
+        `Failed to create leave.approve permission`,
+        error.message,
+        false
+      );
+      throw error;
     }
     logResult(
-      'Create 5-Level Permissions',
+      'Create Leave Approval Permission',
       'PASS',
-      `Created ${permissions.length} level-based permissions`,
+      `Created leave.approve permission`,
       undefined,
-      { permissions: permissions.map(p => p.name) }
+      { permission: 'leave.approve' }
     );
-    addFinding(`Created 5 distinct leave approval permissions (level1 through level5)`);
+    addFinding(`Created single leave.approve permission - workflow determines which step approvers come in`);
 
     // Test 2: Create 5 Approver Roles
     console.log('\n📋 TEST 2: Create 5 Approver Roles');

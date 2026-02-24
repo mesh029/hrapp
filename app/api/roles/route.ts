@@ -37,7 +37,32 @@ export async function GET(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    await requirePermission(user, 'roles.read', { locationId });
+    // Check permission, but allow system admin to bypass
+    try {
+      await requirePermission(user, 'roles.read', { locationId });
+    } catch {
+      // Check if user is system admin
+      const hasSystemAdmin = await prisma.userRole.findFirst({
+        where: {
+          user_id: user.id,
+          deleted_at: null,
+          role: {
+            status: 'active',
+            role_permissions: {
+              some: {
+                permission: {
+                  name: 'system.admin',
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!hasSystemAdmin) {
+        return unauthorizedResponse('You do not have permission to view roles');
+      }
+    }
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);

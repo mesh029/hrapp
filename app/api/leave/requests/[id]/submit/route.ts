@@ -3,7 +3,7 @@ import { authenticate } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse } from '@/lib/utils/responses';
 import { uuidSchema } from '@/lib/utils/validation';
-import { createWorkflowInstance, submitWorkflowInstance } from '@/lib/services/workflow';
+import { createWorkflowInstance, submitWorkflowInstance, findWorkflowTemplate } from '@/lib/services/workflow';
 import { addPendingDays } from '@/lib/services/leave-balance';
 
 /**
@@ -23,12 +23,18 @@ export async function POST(
       return errorResponse('Invalid leave request ID', 400);
     }
 
-    // Get leave request
+    // Get leave request with user info
     const leaveRequest = await prisma.leaveRequest.findUnique({
       where: { id: params.id },
       include: {
         leave_type: true,
         location: true,
+        user: {
+          select: {
+            id: true,
+            staff_type_id: true,
+          },
+        },
       },
     });
 
@@ -58,18 +64,16 @@ export async function POST(
       );
     }
 
-    // Find workflow template for this location and resource type
-    const workflowTemplate = await prisma.workflowTemplate.findFirst({
-      where: {
-        resource_type: 'leave',
-        location_id: leaveRequest.location_id,
-        status: 'active',
-      },
-      orderBy: { version: 'desc' },
+    // Find workflow template matching location, staff type, and leave type
+    const templateId = await findWorkflowTemplate({
+      resourceType: 'leave',
+      locationId: leaveRequest.location_id,
+      staffTypeId: leaveRequest.user.staff_type_id,
+      leaveTypeId: leaveRequest.leave_type_id,
     });
 
-    if (!workflowTemplate) {
-      return errorResponse('No workflow template found for this location and resource type', 400);
+    if (!templateId) {
+      return errorResponse('No workflow template found matching this leave request criteria (location, employee type, leave type)', 400);
     }
 
     let workflowInstanceId = leaveRequest.workflow_instance_id;
@@ -77,7 +81,7 @@ export async function POST(
     // Create new workflow instance if resubmitting after adjustment or if none exists
     if (!workflowInstanceId || leaveRequest.status === 'Adjusted') {
       workflowInstanceId = await createWorkflowInstance({
-        templateId: workflowTemplate.id,
+        templateId: templateId,
         resourceId: leaveRequest.id,
         resourceType: 'leave',
         createdBy: user.id,
