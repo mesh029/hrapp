@@ -70,13 +70,6 @@ export function useDynamicUI() {
         anyPermission: ['reports.read', 'system.admin'],
       },
       {
-        href: '/configuration',
-        label: 'Configuration',
-        icon: null,
-        requiredPermissions: [],
-        anyPermission: ['config.manage', 'system.admin'],
-      },
-      {
         href: '/administration',
         label: 'Administration',
         icon: null,

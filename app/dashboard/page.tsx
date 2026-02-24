@@ -13,6 +13,7 @@ import { useAuth } from '@/ui/src/contexts/auth-context';
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const { features, isLoading: uiLoading } = useDynamicUI();
   const [stats, setStats] = React.useState({
     totalUsers: 0,

@@ -41,12 +41,18 @@ export async function GET(
       return errorResponse('No location available for permission check', 400);
     }
 
-    await requirePermission(user, 'users.read', { locationId });
-
     // Validate UUID
     const validationResult = uuidSchema.safeParse(params.id);
     if (!validationResult.success) {
       return errorResponse('Invalid user ID', 400);
+    }
+
+    // Allow users to view their own profile without users.read permission
+    const isViewingOwnProfile = user.id === params.id;
+    
+    if (!isViewingOwnProfile) {
+      // For viewing other users, require users.read permission
+      await requirePermission(user, 'users.read', { locationId });
     }
 
     const targetUser = await prisma.user.findUnique({

@@ -78,6 +78,15 @@ export default function AdministrationPage() {
       bgColor: 'bg-cyan-50',
     },
     {
+      id: 'workflow-assignments',
+      title: 'Template Assignments',
+      description: 'Assign workflow templates to locations for leaves and timesheets',
+      icon: Workflow,
+      href: '/administration/workflow-assignments',
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+    },
+    {
       id: 'configuration',
       title: 'Configuration',
       description: 'System configuration settings',

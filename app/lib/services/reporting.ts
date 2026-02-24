@@ -30,6 +30,7 @@ export interface TimesheetSummaryFilters {
 export interface DashboardFilters {
   locationId?: string;
   staffTypeId?: string;
+  userId?: string; // For employee-specific data
   startDate?: Date;
   endDate?: Date;
 }

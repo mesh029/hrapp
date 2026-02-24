@@ -8,6 +8,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  quickLogin: (userId: string, adminEmail?: string, adminPassword?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => void;
 }
@@ -42,6 +43,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const quickLogin = async (userId: string, adminEmail?: string, adminPassword?: string) => {
+    const response = await authService.quickLogin(userId, adminEmail, adminPassword);
+    if (response.success && response.data) {
+      // Store tokens first - ensure they're set before any navigation
+      localStorage.setItem('accessToken', response.data.accessToken);
+      if (response.data.refreshToken) {
+        localStorage.setItem('refreshToken', response.data.refreshToken);
+      }
+      // Update user state immediately
+      setUser(response.data.user);
+      // Small delay to ensure localStorage is written
+      await new Promise(resolve => setTimeout(resolve, 50));
+      // Use window.location for a full page reload to ensure auth state is properly initialized
+      window.location.href = '/dashboard';
+    } else {
+      throw new Error(response.message || 'Quick login failed');
+    }
+  };
+
   const logout = async () => {
     await authService.logout();
     setUser(null);
@@ -54,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, isLoading, login, quickLogin, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

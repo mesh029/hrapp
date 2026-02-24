@@ -32,17 +32,57 @@ export interface WorkflowActionParams {
 
 /**
  * Find the best matching workflow template based on resource type, location, staff type, and leave type
- * Priority: Most specific match wins (all filters > location+staff_type > location+leave_type > location only > any active)
+ * Priority: Most specific match wins
+ * 
+ * Matching priority:
+ * 0. EXPLICIT ASSIGNMENTS (highest priority):
+ *    - Check for active template assignment for this location + resource_type
+ * 1. Location-specific templates (is_area_wide = false):
+ *    - All filters (location + staff_type + leave_type)
+ *    - Location + staff_type
+ *    - Location + leave_type (for leave)
+ *    - Location only
+ * 2. Area-wide templates (is_area_wide = true):
+ *    - All filters (staff_type + leave_type, any location)
+ *    - Staff_type only (any location)
+ *    - Leave_type only (any location, for leave)
+ *    - No filters (any location, any staff type, any leave type)
  */
 export async function findWorkflowTemplate(params: FindWorkflowTemplateParams): Promise<string | null> {
   const { resourceType, locationId, staffTypeId, leaveTypeId } = params;
 
-  // Priority 1: Match all filters (most specific)
+  // ===== PRIORITY 0: Check for explicit template assignment (highest priority) =====
+  // Admin has explicitly assigned a template to this location for this resource type
+  const assignment = await prisma.workflowTemplateAssignment.findFirst({
+    where: {
+      location_id: locationId,
+      resource_type: resourceType,
+      status: 'active',
+    },
+    include: {
+      workflow_template: {
+        where: {
+          status: 'active', // Ensure the assigned template is still active
+        },
+      },
+    },
+    orderBy: { assigned_at: 'desc' }, // Most recent assignment wins if multiple
+  });
+
+  if (assignment && assignment.workflow_template) {
+    return assignment.workflow_template.id;
+  }
+
+  // ===== PRIORITY 1-4: Location-specific templates (is_area_wide = false) =====
+  // These templates apply only to the specific location
+
+  // Priority 1: Match all filters (most specific location-specific)
   if (staffTypeId && (resourceType === 'leave' ? leaveTypeId : true)) {
     const template = await prisma.workflowTemplate.findFirst({
       where: {
         resource_type: resourceType,
         location_id: locationId,
+        is_area_wide: false, // Location-specific
         staff_type_id: staffTypeId,
         leave_type_id: resourceType === 'leave' ? leaveTypeId : null,
         status: 'active',
@@ -61,6 +101,7 @@ export async function findWorkflowTemplate(params: FindWorkflowTemplateParams): 
       where: {
         resource_type: resourceType,
         location_id: locationId,
+        is_area_wide: false, // Location-specific
         staff_type_id: staffTypeId,
         leave_type_id: null,
         status: 'active',
@@ -79,6 +120,7 @@ export async function findWorkflowTemplate(params: FindWorkflowTemplateParams): 
       where: {
         resource_type: 'leave',
         location_id: locationId,
+        is_area_wide: false, // Location-specific
         staff_type_id: null,
         leave_type_id: leaveTypeId,
         status: 'active',
@@ -92,10 +134,11 @@ export async function findWorkflowTemplate(params: FindWorkflowTemplateParams): 
   }
 
   // Priority 4: Match location only (no filters)
-  const template = await prisma.workflowTemplate.findFirst({
+  const locationSpecificTemplate = await prisma.workflowTemplate.findFirst({
     where: {
       resource_type: resourceType,
       location_id: locationId,
+      is_area_wide: false, // Location-specific
       staff_type_id: null,
       leave_type_id: null,
       status: 'active',
@@ -103,7 +146,80 @@ export async function findWorkflowTemplate(params: FindWorkflowTemplateParams): 
     orderBy: { version: 'desc' },
   });
 
-  return template?.id || null;
+  if (locationSpecificTemplate) {
+    return locationSpecificTemplate.id;
+  }
+
+  // ===== PRIORITY 5-8: Area-wide templates (is_area_wide = true) =====
+  // These templates apply to all locations, but may still filter by staff_type/leave_type
+
+  // Priority 5: Match area-wide with all filters (staff_type + leave_type)
+  if (staffTypeId && (resourceType === 'leave' ? leaveTypeId : true)) {
+    const template = await prisma.workflowTemplate.findFirst({
+      where: {
+        resource_type: resourceType,
+        is_area_wide: true, // Area-wide
+        staff_type_id: staffTypeId,
+        leave_type_id: resourceType === 'leave' ? leaveTypeId : null,
+        status: 'active',
+      },
+      orderBy: { version: 'desc' },
+    });
+
+    if (template) {
+      return template.id;
+    }
+  }
+
+  // Priority 6: Match area-wide + staff_type (leave_type can be null)
+  if (staffTypeId) {
+    const template = await prisma.workflowTemplate.findFirst({
+      where: {
+        resource_type: resourceType,
+        is_area_wide: true, // Area-wide
+        staff_type_id: staffTypeId,
+        leave_type_id: null,
+        status: 'active',
+      },
+      orderBy: { version: 'desc' },
+    });
+
+    if (template) {
+      return template.id;
+    }
+  }
+
+  // Priority 7: Match area-wide + leave_type (staff_type can be null) - only for leave
+  if (resourceType === 'leave' && leaveTypeId) {
+    const template = await prisma.workflowTemplate.findFirst({
+      where: {
+        resource_type: 'leave',
+        is_area_wide: true, // Area-wide
+        staff_type_id: null,
+        leave_type_id: leaveTypeId,
+        status: 'active',
+      },
+      orderBy: { version: 'desc' },
+    });
+
+    if (template) {
+      return template.id;
+    }
+  }
+
+  // Priority 8: Match area-wide with no filters (applies to all locations, all staff types, all leave types)
+  const areaWideTemplate = await prisma.workflowTemplate.findFirst({
+    where: {
+      resource_type: resourceType,
+      is_area_wide: true, // Area-wide
+      staff_type_id: null,
+      leave_type_id: null,
+      status: 'active',
+    },
+    orderBy: { version: 'desc' },
+  });
+
+  return areaWideTemplate?.id || null;
 }
 
 /**

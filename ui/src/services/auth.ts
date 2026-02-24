@@ -55,6 +55,19 @@ export const authService = {
     return api.post<AuthResponse>('/api/auth/refresh', { refreshToken }, { skipAuth: true });
   },
 
+  async quickLogin(userId: string, adminEmail?: string, adminPassword?: string): Promise<AuthResponse> {
+    // If admin credentials are provided, use the unauthenticated endpoint
+    if (adminEmail && adminPassword) {
+      return api.post<AuthResponse>('/api/auth/quick-login', { 
+        adminEmail, 
+        adminPassword, 
+        userId 
+      }, { skipAuth: true });
+    }
+    // Otherwise, use the authenticated endpoint (for when admin is already logged in)
+    return api.post<AuthResponse>('/api/admin/users/quick-login', { userId });
+  },
+
   getCurrentUser(): User | null {
     if (typeof window === 'undefined') return null;
     const token = localStorage.getItem('accessToken');

@@ -128,28 +128,29 @@ model User {
   // Relations
   user_roles                           UserRole[]
   user_scopes                          UserPermissionScope[]
-  delegations_as_delegator             Delegation[]                @relation("Delegator")
-  delegations_as_delegate              Delegation[]                @relation("Delegate")
+  delegations_as_delegator             Delegation[]                 @relation("Delegator")
+  delegations_as_delegate              Delegation[]                 @relation("Delegate")
   workflow_instances_created           WorkflowInstance[]
   workflow_step_instances_acted        WorkflowStepInstance[]
+  workflow_template_assignments        WorkflowTemplateAssignment[] @relation("WorkflowTemplateAssigner")
   leave_requests                       LeaveRequest[]
   leave_balances                       LeaveBalance[]
   leave_balance_resets                 LeaveBalanceReset[]
   leave_balance_adjustments            LeaveBalanceAdjustment[]
-  leave_balance_resets_performed       LeaveBalanceReset[]         @relation("LeaveBalanceResetter")
-  leave_balance_adjustments_performed  LeaveBalanceAdjustment[]    @relation("LeaveBalanceAdjuster")
+  leave_balance_resets_performed       LeaveBalanceReset[]          @relation("LeaveBalanceResetter")
+  leave_balance_adjustments_performed  LeaveBalanceAdjustment[]     @relation("LeaveBalanceAdjuster")
   timesheets                           Timesheet[]
   holidays_created                     Holiday[]
-  weekend_extra_requests_created       WeekendExtraRequest[]       @relation("WeekendExtraRequester")
-  weekend_extra_requests_approved      WeekendExtraRequest[]       @relation("WeekendExtraApprover")
-  overtime_requests_created            OvertimeRequest[]           @relation("OvertimeRequester")
-  overtime_requests_approved           OvertimeRequest[]           @relation("OvertimeApprover")
+  weekend_extra_requests_created       WeekendExtraRequest[]        @relation("WeekendExtraRequester")
+  weekend_extra_requests_approved      WeekendExtraRequest[]        @relation("WeekendExtraApprover")
+  overtime_requests_created            OvertimeRequest[]            @relation("OvertimeRequester")
+  overtime_requests_approved           OvertimeRequest[]            @relation("OvertimeApprover")
   audit_logs                           AuditLog[]
   notifications                        Notification[]
   category_assignments                 UserCategoryAssignment[]
-  category_assignments_created         UserCategoryAssignment[]    @relation("CategoryAssigner")
-  component_visibility_configs         ComponentVisibilityConfig[] @relation("ComponentVisibilityUser")
-  component_visibility_configs_created ComponentVisibilityConfig[] @relation("ComponentVisibilityCreator")
+  category_assignments_created         UserCategoryAssignment[]     @relation("CategoryAssigner")
+  component_visibility_configs         ComponentVisibilityConfig[]  @relation("ComponentVisibilityUser")
+  component_visibility_configs_created ComponentVisibilityConfig[]  @relation("ComponentVisibilityCreator")
 
   @@index([status, deleted_at])
   @@index([primary_location_id])
@@ -233,15 +234,16 @@ model Location {
   updated_at DateTime       @updatedAt
 
   // Relations
-  users_primary      User[]                @relation("UserPrimaryLocation")
-  user_scopes        UserPermissionScope[]
-  delegations        Delegation[]
-  workflow_templates WorkflowTemplate[]
-  leave_requests     LeaveRequest[]
-  timesheets         Timesheet[]
-  work_hours_configs WorkHoursConfig[]
-  holidays           Holiday[]
-  accrual_configs    LeaveAccrualConfig[]
+  users_primary                 User[]                       @relation("UserPrimaryLocation")
+  user_scopes                   UserPermissionScope[]
+  delegations                   Delegation[]
+  workflow_templates            WorkflowTemplate[]
+  workflow_template_assignments WorkflowTemplateAssignment[]
+  leave_requests                LeaveRequest[]
+  timesheets                    Timesheet[]
+  work_hours_configs            WorkHoursConfig[]
+  holidays                      Holiday[]
+  accrual_configs               LeaveAccrualConfig[]
 
   @@index([parent_id])
   @@index([status, parent_id])
@@ -308,11 +310,12 @@ model WorkflowTemplate {
   status        WorkflowTemplateStatus @default(active)
   created_at    DateTime               @default(now())
 
-  location   Location           @relation(fields: [location_id], references: [id], onDelete: Cascade)
-  staff_type StaffType?         @relation(fields: [staff_type_id], references: [id], onDelete: SetNull)
-  leave_type LeaveType?         @relation(fields: [leave_type_id], references: [id], onDelete: SetNull)
-  steps      WorkflowStep[]
-  instances  WorkflowInstance[]
+  location    Location                     @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  staff_type  StaffType?                   @relation(fields: [staff_type_id], references: [id], onDelete: SetNull)
+  leave_type  LeaveType?                   @relation(fields: [leave_type_id], references: [id], onDelete: SetNull)
+  steps       WorkflowStep[]
+  instances   WorkflowInstance[]
+  assignments WorkflowTemplateAssignment[]
 
   @@index([resource_type, location_id, status])
   @@index([resource_type, location_id, staff_type_id, leave_type_id, status])
@@ -841,4 +844,25 @@ model ComponentVisibilityConfig {
   @@index([user_id])
   @@index([priority])
   @@map("component_visibility_configs")
+}
+
+model WorkflowTemplateAssignment {
+  id                   String       @id @default(uuid())
+  location_id          String
+  resource_type        ResourceType // 'leave' or 'timesheet'
+  workflow_template_id String
+  assigned_by          String
+  assigned_at          DateTime     @default(now())
+  notes                String?
+  status               String       @default("active") // "active" or "inactive"
+
+  location          Location         @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  workflow_template WorkflowTemplate @relation(fields: [workflow_template_id], references: [id], onDelete: Cascade)
+  assigner          User             @relation("WorkflowTemplateAssigner", fields: [assigned_by], references: [id], onDelete: Cascade)
+
+  @@unique([location_id, resource_type, status], where: { status: "active" }) // Only one active template per location+resource_type
+  @@index([location_id, resource_type])
+  @@index([workflow_template_id])
+  @@index([status])
+  @@map("workflow_template_assignments")
 }

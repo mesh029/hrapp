@@ -42,12 +42,23 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const reportLocationId = searchParams.get('location_id') || undefined;
     const staffTypeId = searchParams.get('staff_type_id') || undefined;
+    const userId = searchParams.get('user_id') || undefined; // For employee-specific data
     const startDate = searchParams.get('start_date') ? new Date(searchParams.get('start_date')!) : undefined;
     const endDate = searchParams.get('end_date') ? new Date(searchParams.get('end_date')!) : undefined;
 
+    // Determine scope based on user permissions
+    let effectiveLocationId = reportLocationId;
+    let effectiveUserId = userId;
+    
+    // If user is not admin and no location specified, use their location
+    if (!effectiveLocationId && user.primary_location_id) {
+      effectiveLocationId = user.primary_location_id;
+    }
+
     const dashboard = await getDashboardData({
-      locationId: reportLocationId,
+      locationId: effectiveLocationId,
       staffTypeId: staffTypeId,
+      userId: effectiveUserId, // Pass user ID for employee-specific filtering
       startDate,
       endDate,
     });

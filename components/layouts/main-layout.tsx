@@ -9,17 +9,20 @@ import {
   Clock, 
   Workflow, 
   BarChart, 
-  Settings, 
   Shield, 
   User,
   Menu,
-  Bell
+  Bell,
+  LogOut,
+  ChevronDown
 } from 'lucide-react';
 import { Sidebar, SidebarContent, SidebarItem } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/ui/src/contexts/auth-context';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -33,18 +36,21 @@ const iconMap: Record<string, any> = {
   '/timesheets': Clock,
   '/workflows': Workflow,
   '/reports': BarChart,
-  '/configuration': Settings,
   '/administration': Shield,
   '/profile': User,
 };
 
 export function MainLayout({ children }: MainLayoutProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { navigationItems: dynamicNavItems, features, isLoading: uiLoading } = useDynamicUI();
+  const { logout } = useAuth();
   const [isMinimized, setIsMinimized] = React.useState(true); // Start minimized
   const [isMobileOpen, setIsMobileOpen] = React.useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
   const sidebarRef = React.useRef<HTMLDivElement>(null);
   const mainContentRef = React.useRef<HTMLDivElement>(null);
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
 
   // Auto-minimize/expand based on mouse position
   React.useEffect(() => {
@@ -110,6 +116,31 @@ export function MainLayout({ children }: MainLayoutProps) {
       clearTimeout(hoverTimeout);
     };
   }, []);
+
+  // Close user menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    if (isUserMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isUserMenuOpen]);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
   const showMinimized = isMinimized && !isMobile;
@@ -222,8 +253,43 @@ export function MainLayout({ children }: MainLayoutProps) {
 
           <div className="flex items-center gap-2">
             <NotificationBell />
-            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
-              <User className="h-4 w-4 text-primary-foreground" />
+            <div className="relative" ref={userMenuRef}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 gap-2 rounded-full"
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                aria-label="User menu"
+              >
+                <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
+                  <User className="h-4 w-4 text-primary-foreground" />
+                </div>
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </Button>
+              
+              {isUserMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-popover border border-border rounded-md shadow-lg z-50">
+                  <div className="py-1">
+                    <button
+                      onClick={() => {
+                        router.push('/profile');
+                        setIsUserMenuOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
+                    >
+                      <User className="h-4 w-4" />
+                      Profile
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-accent hover:text-accent-foreground text-destructive flex items-center gap-2"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>

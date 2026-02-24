@@ -42,12 +42,11 @@ class ApiClient {
       console.error('Token refresh failed:', error);
     }
 
-    // If refresh fails, clear tokens and redirect to login
+    // If refresh fails, clear tokens
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login';
-    }
+    // Don't redirect here - let the calling code handle it
+    // This prevents automatic redirects during quick login
     return null;
   }
 
@@ -110,6 +109,19 @@ class ApiClient {
           ...fetchOptions,
           headers,
         });
+      } else {
+        // If refresh fails and we're not in a login flow, redirect to login
+        // This prevents redirects during quick login
+        const isLoginFlow = typeof window !== 'undefined' && 
+          (window.location.pathname.includes('/login') || 
+           window.location.pathname === '/dashboard');
+        if (!isLoginFlow) {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
+        }
       }
     }
 
