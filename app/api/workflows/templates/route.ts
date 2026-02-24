@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
           approver_strategy: step.approver_strategy || 'permission',
           include_manager: step.include_manager || false,
           required_roles: step.required_roles ? JSON.stringify(step.required_roles) : null,
-          location_scope: step.location_scope || 'same',
+          location_scope: step.location_scope || 'all',
           conditional_rules: step.conditional_rules ? JSON.stringify(step.conditional_rules) : null,
         })),
       });

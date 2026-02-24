@@ -100,6 +100,12 @@ export const createWorkflowTemplateSchema = z.object({
     required_permission: z.string().min(1),
     allow_decline: z.boolean().default(true),
     allow_adjust: z.boolean().default(false),
+    // Approver Resolution Configuration - Include all fields from createWorkflowStepSchema
+    approver_strategy: z.enum(['permission', 'manager', 'role', 'combined']).optional().default('permission'),
+    include_manager: z.boolean().optional().default(false),
+    required_roles: z.array(z.string().uuid()).optional().nullable(),
+    location_scope: z.enum(['same', 'parent', 'descendants', 'all']).optional().default('all'),
+    conditional_rules: z.array(z.any()).optional().nullable(), // Allow any structure for conditional_rules (includes _metadata)
   })).min(1, 'At least one step is required'),
 }).refine(
   (data) => {

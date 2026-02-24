@@ -208,17 +208,11 @@ export function StepConfigurationDialog({
       approver_strategy: approverStrategy,
       include_manager: formData.include_manager || false,
       location_scope: formData.location_scope || 'all',
+      // Always include required_roles (even if empty array) so it's preserved
+      required_roles: requiredRoles.length > 0 ? requiredRoles : null,
+      // Always include conditional_rules (even if empty array) so it's preserved
+      conditional_rules: conditionalRules.length > 0 ? conditionalRules : null,
     };
-
-    // Only include required_roles if it's not empty
-    if (requiredRoles.length > 0) {
-      stepToSave.required_roles = requiredRoles;
-    }
-
-    // Only include conditional_rules if it's not empty
-    if (conditionalRules.length > 0) {
-      stepToSave.conditional_rules = conditionalRules;
-    }
 
     onSave(stepToSave);
     onClose();
