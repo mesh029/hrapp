@@ -304,6 +304,35 @@ The comprehensive testing across Phases 1-6 demonstrates that the HR system is:
 
 The system successfully adapts to different organizational needs, employee types, and workflow configurations. All critical functionality has been validated, and the system is ready for production deployment.
 
+## Phase 7 Addendum: Dynamic UI Control Rollout
+
+This addendum captures the newer dynamic UI governance work completed after the original Phase 1-6 analysis:
+
+- ✅ Added role-profile baseline engine for component visibility (`system_admin`, `hr_manager`, `program_officer`, `manager`, `employee`)
+- ✅ Added baseline preview/apply/reset API:
+  - `GET /api/admin/component-visibility/baseline`
+  - `POST /api/admin/component-visibility/baseline` (`apply` / `reset`)
+- ✅ Added baseline automation script:
+  - `scripts/create-baseline-component-visibility.ts`
+  - npm script: `baseline:component-visibility`
+- ✅ Added baseline controls in admin UI:
+  - `Apply Baseline`
+  - `Reset + Reapply`
+- ✅ Improved component visibility configuration dialog to prioritize role-based setup while keeping category support as legacy
+- ✅ Integrated component visibility checks into:
+  - Dashboard cards/actions
+  - Sidebar navigation links
+- ✅ Added baseline configuration artifact:
+  - `docs/baseline-component-visibility-config.json`
+
+### Workability Checks Performed
+
+- ✅ IDE lint diagnostics on modified files: no new lint issues
+- ✅ TypeScript check for modified files: no type errors in changed files
+- ⚠️ Baseline script dry run blocked by environment dependency:
+  - Database not reachable at `127.0.0.1:5433` in current session (`P1001`)
+  - Logic execution path validated up to DB connection
+
 ---
 
 **Date:** 2025-01-24

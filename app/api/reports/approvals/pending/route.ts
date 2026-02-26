@@ -16,7 +16,13 @@ export async function GET(request: NextRequest) {
       return errorResponse('Unauthorized', 401);
     }
 
-    // Check permission (any workflow read permission)
+    const { searchParams } = new URL(request.url);
+    const reportLocationId = searchParams.get('location_id') || undefined;
+    const requestedUserId = searchParams.get('user_id') || undefined;
+    const startDate = searchParams.get('start_date') ? new Date(searchParams.get('start_date')!) : undefined;
+    const endDate = searchParams.get('end_date') ? new Date(searchParams.get('end_date')!) : undefined;
+
+    // Resolve user location for scope checks
     const userWithLocation = await prisma.user.findUnique({
       where: { id: user.id },
       select: { primary_location_id: true },
@@ -28,19 +34,24 @@ export async function GET(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    try {
-      await requirePermission(user, 'workflows.read', { locationId });
-    } catch {
-      return errorResponse('Forbidden: Insufficient permissions', 403);
+    const { checkPermission } = await import('@/lib/middleware/permissions');
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId });
+    const isSelfRequest = !requestedUserId || requestedUserId === user.id;
+
+    if (!isAdmin && !isSelfRequest) {
+      try {
+        await requirePermission(user, 'workflows.read', { locationId });
+      } catch {
+        return errorResponse('Forbidden: Insufficient permissions', 403);
+      }
     }
 
-    const { searchParams } = new URL(request.url);
-    const reportLocationId = searchParams.get('location_id') || undefined;
-    const startDate = searchParams.get('start_date') ? new Date(searchParams.get('start_date')!) : undefined;
-    const endDate = searchParams.get('end_date') ? new Date(searchParams.get('end_date')!) : undefined;
+    // For non-admin requests without explicit user, default to own data to avoid cross-user leakage.
+    const effectiveUserId = !isAdmin && !requestedUserId ? user.id : requestedUserId;
 
     const report = await getPendingApprovals({
       locationId: reportLocationId,
+      userId: effectiveUserId,
       startDate,
       endDate,
     });

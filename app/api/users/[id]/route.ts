@@ -90,6 +90,18 @@ export async function GET(
                 id: true,
                 name: true,
                 status: true,
+                role_permissions: {
+                  select: {
+                    permission: {
+                      select: {
+                        id: true,
+                        name: true,
+                        description: true,
+                        module: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },

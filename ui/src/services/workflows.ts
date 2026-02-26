@@ -170,4 +170,28 @@ export const workflowService = {
   }> {
     return api.delete(`/api/workflows/templates/${templateId}/steps/${stepId}`);
   },
+
+  /**
+   * Approve current workflow step
+   */
+  async approveInstance(instanceId: string, comment?: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return api.post(`/api/workflows/instances/${instanceId}/approve`, { comment });
+  },
+
+  /**
+   * Decline current workflow step (final decline)
+   */
+  async declineInstance(instanceId: string, comment: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return api.post(`/api/workflows/instances/${instanceId}/decline`, { comment });
+  },
+
+  /**
+   * Route workflow back to a selected step for re-approval
+   */
+  async routeBackInstance(instanceId: string, comment: string, routeToStep: number): Promise<{ success: boolean; data?: any; message?: string }> {
+    return api.post(`/api/workflows/instances/${instanceId}/adjust`, {
+      comment,
+      route_to_step: routeToStep,
+    });
+  },
 };

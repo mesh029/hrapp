@@ -42,7 +42,8 @@
     "sync:admin-workflow-permissions": "tsx scripts/sync-admin-workflow-permissions.ts",
     "fix:manager-only-steps": "tsx scripts/fix-manager-only-steps.ts",
     "debug:workflow-approvers": "tsx scripts/debug-workflow-approvers.ts",
-    "check:susan-workflow": "tsx scripts/check-susan-workflow.ts"
+    "check:susan-workflow": "tsx scripts/check-susan-workflow.ts",
+    "baseline:component-visibility": "tsx scripts/create-baseline-component-visibility.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

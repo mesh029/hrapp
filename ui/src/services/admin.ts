@@ -73,6 +73,15 @@ export interface UserCategoryAssignment {
   };
 }
 
+export interface ComponentVisibilityBaselinePreview {
+  role_id: string;
+  role_name: string;
+  profile: string;
+  total_components: number;
+  visible_components: number;
+  hidden_components: number;
+}
+
 export const adminService = {
   // User Categories
   async getUserCategories(): Promise<{
@@ -227,5 +236,35 @@ export const adminService = {
     };
   }> {
     return api.get(`/api/admin/component-visibility/user/${userId}`);
+  },
+
+  async previewComponentVisibilityBaseline(): Promise<{
+    success: boolean;
+    data: {
+      total_known_components: number;
+      total_roles: number;
+      preview: ComponentVisibilityBaselinePreview[];
+    };
+  }> {
+    return api.get('/api/admin/component-visibility/baseline');
+  },
+
+  async applyComponentVisibilityBaseline(data?: {
+    mode?: 'apply' | 'reset';
+    dry_run?: boolean;
+  }): Promise<{
+    success: boolean;
+    data: {
+      mode: 'apply' | 'reset';
+      dry_run: boolean;
+      total_roles: number;
+      total_components: number;
+      total_records: number;
+      created: number;
+      updated: number;
+    };
+    message?: string;
+  }> {
+    return api.post('/api/admin/component-visibility/baseline', data || {});
   },
 };

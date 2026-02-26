@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    const hasPermission = await checkPermission(user, 'timesheets.approve', { locationId });
+    const hasPermission = await checkPermission(user, 'timesheet.approve', { locationId });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }

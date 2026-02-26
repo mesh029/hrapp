@@ -13,6 +13,36 @@ import { useAuth } from '../contexts/auth-context';
 import { useDynamicUI } from './use-dynamic-ui';
 import { api } from '../services/api';
 
+const visibilityConfigCache = new Map<string, any>();
+const visibilityConfigInFlight = new Map<string, Promise<any>>();
+
+async function fetchVisibilityConfigForUser(userId: string) {
+  if (visibilityConfigCache.has(userId)) {
+    return visibilityConfigCache.get(userId);
+  }
+
+  const existingPromise = visibilityConfigInFlight.get(userId);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const requestPromise = (async () => {
+    const response = await api.get(`/api/admin/component-visibility/user/${userId}`);
+    if (response.success && response.data) {
+      visibilityConfigCache.set(userId, response.data);
+      return response.data;
+    }
+    return null;
+  })();
+
+  visibilityConfigInFlight.set(userId, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    visibilityConfigInFlight.delete(userId);
+  }
+}
+
 export interface ComponentVisibilityOptions {
   /**
    * Permission to check if no category config exists
@@ -104,15 +134,13 @@ export function useComponentVisibility(
       
       // Try to fetch admin-configured visibility
       try {
-        const response = await api.get(`/api/admin/component-visibility/user/${user.id}`);
-        
-        if (response.success && response.data) {
-          const data = response.data as any;
-          // Find config for this specific component
+        const data = await fetchVisibilityConfigForUser(user.id);
+
+        if (data) {
           const componentConfig = data.visible_components?.find(
             (comp: any) => comp.component_id === componentId
           );
-          
+
           if (componentConfig) {
             setConfig({
               visible: componentConfig.visible,
@@ -125,7 +153,7 @@ export function useComponentVisibility(
         }
       } catch (error) {
         // API endpoint might not exist yet, fall back to permission check
-        console.log(`[ComponentVisibility] No config found for ${componentId}, using fallback`);
+        // Keep this silent to avoid noisy client logs.
       }
 
       // Fallback to permission-based check

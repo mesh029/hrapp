@@ -36,7 +36,7 @@ export const permissionsService = {
    */
   async getUserPermissions(userId: string): Promise<UserPermissionsResponse> {
     // Get user with roles and permissions
-    const userResponse = await api.get(`/api/users/${userId}`);
+    const userResponse = await api.get<any>(`/api/users/${userId}`);
     if (!userResponse.success) {
       return { success: false, data: { permissions: [], roles: [] } };
     }
@@ -49,56 +49,44 @@ export const permissionsService = {
     const rolePermissions: Array<{ id: string; name: string; permissions: Permission[] }> = [];
 
     for (const userRole of roles) {
-      if (userRole.role?.status === 'active') {
-        try {
-          // Fetch role permissions from API
-          const rolePermsResponse = await api.get(`/api/roles/${userRole.role.id}/permissions`);
-          const rolePerms: Permission[] = [];
-          
-          if (rolePermsResponse.success && rolePermsResponse.data) {
-            const roleData = rolePermsResponse.data as any;
-            if (roleData.permissions && Array.isArray(roleData.permissions)) {
-              roleData.permissions.forEach((perm: any) => {
-                rolePerms.push({
-                  id: perm.id,
-                  name: perm.name,
-                  description: perm.description,
-                  category: perm.module,
-                });
-                allPermissions.set(perm.name, {
-                  id: perm.id,
-                  name: perm.name,
-                  description: perm.description,
-                  category: perm.module,
-                });
-              });
-            }
-          }
+      if (userRole.role?.status !== 'active') continue;
 
-          rolePermissions.push({
-            id: userRole.role.id,
-            name: userRole.role.name,
-            permissions: rolePerms,
-          });
-        } catch (error) {
-          console.error(`Failed to fetch permissions for role ${userRole.role.id}:`, error);
-          // Fallback: check if role name suggests admin
-          if (userRole.role.name.toLowerCase().includes('admin')) {
-            const adminPerm: Permission = {
-              id: 'system.admin',
-              name: 'system.admin',
-              description: 'System administrator - full access',
-              category: 'system',
-            };
-            allPermissions.set('system.admin', adminPerm);
-            rolePermissions.push({
-              id: userRole.role.id,
-              name: userRole.role.name,
-              permissions: [adminPerm],
-            });
-          }
-        }
+      const rolePerms: Permission[] = [];
+      const rolePermissionsFromUser = Array.isArray(userRole.role?.role_permissions)
+        ? userRole.role.role_permissions
+        : [];
+
+      for (const rp of rolePermissionsFromUser) {
+        const perm = rp?.permission;
+        if (!perm?.name) continue;
+
+        const mapped: Permission = {
+          id: perm.id,
+          name: perm.name,
+          description: perm.description,
+          category: perm.module,
+        };
+        rolePerms.push(mapped);
+        allPermissions.set(mapped.name, mapped);
       }
+
+      // Fallback: check if role name suggests admin when permission relations are missing
+      if (rolePerms.length === 0 && userRole.role.name.toLowerCase().includes('admin')) {
+        const adminPerm: Permission = {
+          id: 'system.admin',
+          name: 'system.admin',
+          description: 'System administrator - full access',
+          category: 'system',
+        };
+        rolePerms.push(adminPerm);
+        allPermissions.set('system.admin', adminPerm);
+      }
+
+      rolePermissions.push({
+        id: userRole.role.id,
+        name: userRole.role.name,
+        permissions: rolePerms,
+      });
     }
 
     return {

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Search, Settings, Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react';
+import { Search, Settings, Eye, EyeOff, CheckCircle, XCircle, Sparkles, RotateCcw } from 'lucide-react';
 import { adminService, ComponentVisibilityConfig, UserCategory } from '@/ui/src/services/admin';
 import { rolesService, Role } from '@/ui/src/services/roles';
 import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
@@ -19,20 +19,96 @@ const COMPONENT_ID_VIEW = 'admin.component-visibility.view';
 
 // Known component IDs (can be expanded)
 const KNOWN_COMPONENTS = [
+  // Dashboard Components
+  { id: 'dashboard.stats.total-users', name: 'Total Users Card', module: 'Dashboard' },
+  { id: 'dashboard.stats.active-users', name: 'Active Users Card', module: 'Dashboard' },
+  { id: 'dashboard.stats.pending-leave', name: 'Pending Leave Requests Card', module: 'Dashboard' },
+  { id: 'dashboard.stats.pending-timesheets', name: 'Pending Timesheets Card', module: 'Dashboard' },
+  { id: 'dashboard.stats.pending-approvals', name: 'Pending Approvals Card', module: 'Dashboard' },
+  { id: 'dashboard.actions.create-user', name: 'Create New User Button', module: 'Dashboard' },
+  { id: 'dashboard.actions.manage-users', name: 'Manage Users Button', module: 'Dashboard' },
+  { id: 'dashboard.actions.create-leave', name: 'Create Leave Request Button', module: 'Dashboard' },
+  { id: 'dashboard.actions.approve-leave', name: 'Approve Leave Requests Button', module: 'Dashboard' },
+  { id: 'dashboard.actions.create-timesheet', name: 'Create Timesheet Button', module: 'Dashboard' },
+  { id: 'dashboard.actions.approve-timesheets', name: 'Approve Timesheets Button', module: 'Dashboard' },
+  { id: 'dashboard.actions.view-reports', name: 'View Reports Button', module: 'Dashboard' },
+  { id: 'dashboard.overview.system', name: 'System Overview Section', module: 'Dashboard' },
+  { id: 'dashboard.overview.location', name: 'Location Overview Section', module: 'Dashboard' },
+  { id: 'dashboard.overview.team', name: 'Team Overview Section', module: 'Dashboard' },
+  { id: 'dashboard.overview.personal', name: 'Personal Overview Section', module: 'Dashboard' },
+  { id: 'dashboard.quick-links', name: 'Quick Links Section', module: 'Dashboard' },
+  
+  // Navigation Components
+  { id: 'nav.dashboard', name: 'Dashboard Link', module: 'Navigation' },
+  { id: 'nav.users', name: 'Users Link', module: 'Navigation' },
+  { id: 'nav.leave', name: 'Leave Link', module: 'Navigation' },
+  { id: 'nav.timesheets', name: 'Timesheets Link', module: 'Navigation' },
+  { id: 'nav.workflows', name: 'Workflows Link', module: 'Navigation' },
+  { id: 'nav.approvals', name: 'Pending Approvals Link', module: 'Navigation' },
+  { id: 'nav.reports', name: 'Reports Link', module: 'Navigation' },
+  { id: 'nav.administration', name: 'Administration Link', module: 'Navigation' },
+  { id: 'nav.profile', name: 'Profile Link', module: 'Navigation' },
+  
+  // Leave Components
   { id: 'leave.create.button', name: 'Create Leave Request Button', module: 'Leave' },
   { id: 'leave.create.form', name: 'Create Leave Request Form', module: 'Leave' },
   { id: 'leave.list.view', name: 'Leave Requests List', module: 'Leave' },
   { id: 'leave.edit.action', name: 'Edit Leave Request', module: 'Leave' },
   { id: 'leave.approve.action', name: 'Approve Leave Request', module: 'Leave' },
+  { id: 'leave.decline.action', name: 'Decline Leave Request', module: 'Leave' },
+  { id: 'leave.balances.view', name: 'Leave Balances View', module: 'Leave' },
+  { id: 'leave.types.view', name: 'Leave Types View', module: 'Leave' },
+  
+  // Timesheet Components
   { id: 'timesheet.create.button', name: 'Create Timesheet Button', module: 'Timesheet' },
   { id: 'timesheet.create.form', name: 'Create Timesheet Form', module: 'Timesheet' },
   { id: 'timesheet.list.view', name: 'Timesheets List', module: 'Timesheet' },
   { id: 'timesheet.edit.action', name: 'Edit Timesheet', module: 'Timesheet' },
   { id: 'timesheet.submit.action', name: 'Submit Timesheet', module: 'Timesheet' },
+  { id: 'timesheet.delete.action', name: 'Delete Timesheet', module: 'Timesheet' },
   { id: 'timesheet.weekend-extra.button', name: 'Request Weekend Extra Button', module: 'Timesheet' },
   { id: 'timesheet.overtime.button', name: 'Request Overtime Button', module: 'Timesheet' },
+  { id: 'timesheet.approve.action', name: 'Approve Timesheet', module: 'Timesheet' },
+  { id: 'timesheet.decline.action', name: 'Decline Timesheet', module: 'Timesheet' },
+  
+  // User Components
   { id: 'users.create.button', name: 'Create User Button', module: 'Users' },
   { id: 'users.bulk.upload', name: 'Bulk User Upload', module: 'Users' },
+  { id: 'users.list.view', name: 'Users List', module: 'Users' },
+  { id: 'users.edit.action', name: 'Edit User', module: 'Users' },
+  { id: 'users.delete.action', name: 'Delete User', module: 'Users' },
+  { id: 'users.view.detail', name: 'User Detail View', module: 'Users' },
+  { id: 'users.assign.roles', name: 'Assign Roles to User', module: 'Users' },
+  
+  // Workflow Components
+  { id: 'workflows.list.view', name: 'Workflows List', module: 'Workflows' },
+  { id: 'workflows.templates.create', name: 'Create Workflow Template', module: 'Workflows' },
+  { id: 'workflows.templates.edit', name: 'Edit Workflow Template', module: 'Workflows' },
+  { id: 'workflows.templates.delete', name: 'Delete Workflow Template', module: 'Workflows' },
+  { id: 'workflows.simulator.view', name: 'Workflow Simulator', module: 'Workflows' },
+  { id: 'workflows.approve.action', name: 'Approve Workflow Step', module: 'Workflows' },
+  { id: 'workflows.decline.action', name: 'Decline Workflow Step', module: 'Workflows' },
+  
+  // Reports Components
+  { id: 'reports.dashboard.view', name: 'Reports Dashboard', module: 'Reports' },
+  { id: 'reports.leave.view', name: 'Leave Reports', module: 'Reports' },
+  { id: 'reports.timesheet.view', name: 'Timesheet Reports', module: 'Reports' },
+  { id: 'reports.export.action', name: 'Export Reports', module: 'Reports' },
+  
+  // Administration Components
+  { id: 'admin.roles.view', name: 'Roles Management', module: 'Administration' },
+  { id: 'admin.roles.create', name: 'Create Role', module: 'Administration' },
+  { id: 'admin.roles.edit', name: 'Edit Role', module: 'Administration' },
+  { id: 'admin.roles.delete', name: 'Delete Role', module: 'Administration' },
+  { id: 'admin.permissions.view', name: 'Permissions View', module: 'Administration' },
+  { id: 'admin.locations.view', name: 'Locations Management', module: 'Administration' },
+  { id: 'admin.locations.create', name: 'Create Location', module: 'Administration' },
+  { id: 'admin.locations.edit', name: 'Edit Location', module: 'Administration' },
+  { id: 'admin.locations.delete', name: 'Delete Location', module: 'Administration' },
+  { id: 'admin.workflow-assignments.view', name: 'Workflow Assignments', module: 'Administration' },
+  { id: 'admin.workflow-assignments.create', name: 'Create Workflow Assignment', module: 'Administration' },
+  { id: 'admin.component-visibility.view', name: 'Component Visibility', module: 'Administration' },
+  { id: 'admin.user-categories.view', name: 'User Categories', module: 'Administration' },
 ];
 
 export default function ComponentVisibilityPage() {
@@ -62,6 +138,14 @@ export default function ComponentVisibilityPage() {
   });
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [isApplyingBaseline, setIsApplyingBaseline] = React.useState(false);
+  const [baselineMessage, setBaselineMessage] = React.useState<string | null>(null);
+  const [baselinePreview, setBaselinePreview] = React.useState<Array<{
+    role_name: string;
+    profile: string;
+    visible_components: number;
+    hidden_components: number;
+  }> | null>(null);
 
   React.useEffect(() => {
     if (!uiLoading && canView) {
@@ -78,10 +162,6 @@ export default function ComponentVisibilityPage() {
         adminService.getComponentVisibilityConfigs(),
       ]);
 
-      console.log('[ComponentVisibility] Roles response:', JSON.stringify(rolesRes, null, 2));
-      console.log('[ComponentVisibility] Categories response:', JSON.stringify(categoriesRes, null, 2));
-      console.log('[ComponentVisibility] Configs response:', JSON.stringify(configsRes, null, 2));
-
       if (rolesRes.success && rolesRes.data) {
         setRoles(rolesRes.data.roles || []);
       }
@@ -90,12 +170,10 @@ export default function ComponentVisibilityPage() {
         // Handle nested data structure
         let categoriesData = categoriesRes.data;
         if (categoriesData && typeof categoriesData === 'object' && 'data' in categoriesData && Array.isArray((categoriesData as any).data)) {
-          console.log('[ComponentVisibility] Found nested data structure, extracting...');
           categoriesData = (categoriesData as any).data;
         }
         
         if (Array.isArray(categoriesData)) {
-          console.log(`[ComponentVisibility] Loaded ${categoriesData.length} categories`);
           setCategories(categoriesData);
         } else {
           console.error('[ComponentVisibility] Categories data is not an array:', categoriesData);
@@ -202,6 +280,59 @@ export default function ComponentVisibilityPage() {
     }
   };
 
+  const handleApplyBaseline = async (mode: 'apply' | 'reset') => {
+    const confirmMessage =
+      mode === 'reset'
+        ? 'This will reset existing role-based visibility configs and re-apply baseline defaults. Continue?'
+        : 'Apply baseline defaults for all active roles?';
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsApplyingBaseline(true);
+      setBaselineMessage(null);
+      const response = await adminService.applyComponentVisibilityBaseline({ mode, dry_run: false });
+
+      if (response.success && response.data) {
+        setBaselineMessage(
+          `Baseline ${mode} complete: created ${response.data.created}, updated ${response.data.updated} records.`
+        );
+        await loadData();
+      } else {
+        setBaselineMessage('Baseline operation completed but response was unexpected.');
+      }
+    } catch (err: any) {
+      setBaselineMessage(err.message || 'Failed to apply baseline configuration.');
+    } finally {
+      setIsApplyingBaseline(false);
+    }
+  };
+
+  const handlePreviewBaseline = async () => {
+    try {
+      setIsApplyingBaseline(true);
+      setBaselineMessage(null);
+      const response = await adminService.previewComponentVisibilityBaseline();
+      const payload: any = (response as any)?.data && (response as any).data.preview
+        ? (response as any).data
+        : (response as any)?.data?.data && (response as any).data.data.preview
+          ? (response as any).data.data
+          : response?.data;
+
+      if (response.success && Array.isArray(payload?.preview)) {
+        setBaselinePreview(payload.preview);
+      } else {
+        setBaselineMessage('Unable to load baseline preview.');
+      }
+    } catch (err: any) {
+      setBaselineMessage(err.message || 'Failed to preview baseline configuration.');
+    } finally {
+      setIsApplyingBaseline(false);
+    }
+  };
+
   const filteredComponents = KNOWN_COMPONENTS.filter(comp => {
     const matchesSearch = comp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          comp.id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -243,12 +374,62 @@ export default function ComponentVisibilityPage() {
     <MainLayout>
       <div className="container mx-auto p-6 space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold">Component Visibility</h1>
-          <p className="text-muted-foreground mt-1">
-            Configure which UI components are visible for different roles
-          </p>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Component Visibility</h1>
+            <p className="text-muted-foreground mt-1">
+              Configure which UI components are visible for different roles
+            </p>
+            {baselineMessage && (
+              <p className="text-sm text-muted-foreground mt-2">{baselineMessage}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={handlePreviewBaseline}
+              disabled={isApplyingBaseline}
+            >
+              Preview Baseline
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleApplyBaseline('apply')}
+              disabled={isApplyingBaseline}
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              Apply Baseline
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleApplyBaseline('reset')}
+              disabled={isApplyingBaseline}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Reset + Reapply
+            </Button>
+          </div>
         </div>
+
+        {baselinePreview && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Baseline Preview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                {baselinePreview.map((item) => (
+                  <div key={item.role_name} className="rounded-md border p-3">
+                    <div className="font-medium">{item.role_name}</div>
+                    <div className="text-xs text-muted-foreground">Profile: {item.profile}</div>
+                    <div className="text-sm mt-2">Visible: {item.visible_components}</div>
+                    <div className="text-sm text-muted-foreground">Hidden: {item.hidden_components}</div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters */}
         <Card>
@@ -501,30 +682,52 @@ export default function ComponentVisibilityPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="category">User Category *</Label>
+                <Label htmlFor="role">Role (Recommended)</Label>
+                <select
+                  id="role"
+                  value={formData.role_id}
+                  onChange={(e) =>
+                    setFormData(prev => ({
+                      ...prev,
+                      role_id: e.target.value,
+                      user_category_id: e.target.value ? '' : prev.user_category_id,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border rounded-md"
+                >
+                  <option value="">Select a role</option>
+                  {roles.map(role => (
+                    <option key={role.id} value={role.id}>{role.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Role-based visibility is the primary strategy.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="category">User Category (Legacy / Optional)</Label>
                 <select
                   id="category"
                   value={formData.user_category_id}
-                  onChange={(e) => setFormData(prev => ({ ...prev, user_category_id: e.target.value }))}
+                  onChange={(e) =>
+                    setFormData(prev => ({
+                      ...prev,
+                      user_category_id: e.target.value,
+                      role_id: e.target.value ? '' : prev.role_id,
+                    }))
+                  }
                   className="w-full px-3 py-2 border rounded-md"
-                  required
                 >
                   <option value="">Select a category</option>
                   {categories.length === 0 ? (
-                    <option value="" disabled>No categories found. Create categories first.</option>
+                    <option value="" disabled>No categories found</option>
                   ) : (
                     categories.map(cat => (
                       <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))
                   )}
                 </select>
-                {categories.length === 0 && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    <a href="/administration/user-categories" className="text-blue-600 hover:underline">
-                      Create user categories
-                    </a> first to configure component visibility.
-                  </p>
-                )}
               </div>
 
               <div className="space-y-2">

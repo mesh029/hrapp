@@ -39,9 +39,6 @@ async function main() {
         },
         include: {
           role: {
-            where: {
-              status: 'active',
-            },
             include: {
               role_permissions: {
                 include: {
@@ -69,7 +66,7 @@ async function main() {
     // Get all unique permissions from all user's roles
     const permissionSet = new Set<string>();
     for (const userRole of user.user_roles) {
-      if (userRole.role) {
+      if (userRole.role && userRole.role.status === 'active') {
         for (const rolePermission of userRole.role.role_permissions) {
           permissionSet.add(rolePermission.permission_id);
         }

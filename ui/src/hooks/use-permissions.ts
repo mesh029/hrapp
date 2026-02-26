@@ -2,16 +2,49 @@
 
 import * as React from 'react';
 import { useAuth } from '../contexts/auth-context';
-import { permissionsService, Permission } from '../services/permissions';
+import { permissionsService } from '../services/permissions';
+
+const permissionsCache = new Map<string, string[]>();
+const permissionsInFlight = new Map<string, Promise<string[]>>();
+
+async function fetchPermissionsForUser(userId: string): Promise<string[]> {
+  if (permissionsCache.has(userId)) {
+    return permissionsCache.get(userId)!;
+  }
+
+  const existingPromise = permissionsInFlight.get(userId);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const requestPromise = (async () => {
+    const response = await permissionsService.getUserPermissions(userId);
+    if (response.success && response.data) {
+      const permissionNames = response.data.permissions.map((p) => p.permission.name);
+      permissionsCache.set(userId, permissionNames);
+      return permissionNames;
+    }
+    return [];
+  })();
+
+  permissionsInFlight.set(userId, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    permissionsInFlight.delete(userId);
+  }
+}
 
 export function usePermissions() {
   const { user } = useAuth();
   const [permissions, setPermissions] = React.useState<string[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [allPermissions, setAllPermissions] = React.useState<Permission[]>([]);
 
   React.useEffect(() => {
     if (user?.id) {
+      if (permissionsCache.has(user.id)) {
+        setPermissions(permissionsCache.get(user.id)!);
+      }
       loadPermissions();
     } else {
       setIsLoading(false);
@@ -26,16 +59,8 @@ export function usePermissions() {
 
     try {
       setIsLoading(true);
-      const response = await permissionsService.getUserPermissions(user.id);
-      console.log('[usePermissions] Raw response:', response);
-      
-      if (response.success && response.data) {
-        const permNames = response.data.permissions.map(p => p.permission.name);
-        console.log('[usePermissions] Loaded permissions:', permNames);
-        setPermissions(permNames);
-      } else {
-        console.warn('[usePermissions] Failed to load permissions:', response);
-      }
+      const permissionNames = await fetchPermissionsForUser(user.id);
+      setPermissions(permissionNames);
     } catch (error) {
       console.error('Failed to load permissions:', error);
       setPermissions([]);
@@ -47,12 +72,9 @@ export function usePermissions() {
   const hasPermission = React.useCallback((permissionName: string): boolean => {
     // system.admin grants all permissions
     if (permissions.includes('system.admin')) {
-      console.log(`[Permissions] system.admin detected - granting ${permissionName}`);
       return true;
     }
-    const hasPerm = permissions.includes(permissionName);
-    console.log(`[Permissions] Checking ${permissionName}:`, hasPerm, 'Available permissions:', permissions);
-    return hasPerm;
+    return permissions.includes(permissionName);
   }, [permissions]);
 
   const hasAnyPermission = React.useCallback((permissionNames: string[]): boolean => {

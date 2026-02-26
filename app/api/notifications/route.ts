@@ -58,9 +58,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { notificationIds, markAll } = body;
+    const { notificationIds, markAll, is_read, mark_all } = body;
 
-    if (markAll) {
+    // Backward-compatible support for older payload variants.
+    if (markAll || mark_all || is_read === true) {
       const { markAllNotificationsAsRead } = await import('@/lib/services/notification');
       const result = await markAllNotificationsAsRead(user.id);
       return successResponse({ count: result.count });

@@ -30,8 +30,11 @@ export async function GET(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    const hasPermission = await checkPermission(user, 'timesheets.read', { locationId: locationId_hasPermission });
-    if (!hasPermission) {
+    const hasReadPermission = await checkPermission(user, 'timesheet.read', { locationId: locationId_hasPermission });
+    const hasCreatePermission = await checkPermission(user, 'timesheet.create', { locationId: locationId_hasPermission });
+    const hasApprovePermission = await checkPermission(user, 'timesheet.approve', { locationId: locationId_hasPermission });
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
+    if (!hasReadPermission && !hasCreatePermission && !hasApprovePermission && !isAdmin) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 
@@ -45,12 +48,14 @@ export async function GET(request: NextRequest) {
       deleted_at: null,
     };
 
-    // If not system admin, only show own timesheets or those they can manage
-    const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
-    if (!isAdmin) {
+    // Admin sees all; read/approvers are location-scoped; create-only users see their own.
+    if (isAdmin) {
+      if (userId) where.user_id = userId;
+    } else if (hasReadPermission || hasApprovePermission) {
+      where.location_id = locationId_hasPermission;
+      if (userId) where.user_id = userId;
+    } else {
       where.user_id = user.id;
-    } else if (userId) {
-      where.user_id = userId;
     }
 
     if (status) {
@@ -125,7 +130,7 @@ export async function POST(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    const hasPermission = await checkPermission(user, 'timesheets.create', { locationId: locationId_hasPermission });
+    const hasPermission = await checkPermission(user, 'timesheet.create', { locationId: locationId_hasPermission });
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }

@@ -23,6 +23,7 @@ import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/ui/src/contexts/auth-context';
+import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -45,6 +46,26 @@ export function MainLayout({ children }: MainLayoutProps) {
   const router = useRouter();
   const { navigationItems: dynamicNavItems, features, isLoading: uiLoading } = useDynamicUI();
   const { logout } = useAuth();
+
+  const { isVisible: canViewNavDashboard } = useComponentVisibility('nav.dashboard', { defaultVisible: true });
+  const { isVisible: canViewNavUsers } = useComponentVisibility('nav.users', {
+    fallbackCheck: (f) => f.canViewAllUsers || f.isAdmin,
+  });
+  const { isVisible: canViewNavLeave } = useComponentVisibility('nav.leave', { defaultVisible: true });
+  const { isVisible: canViewNavTimesheets } = useComponentVisibility('nav.timesheets', { defaultVisible: true });
+  const { isVisible: canViewNavWorkflows } = useComponentVisibility('nav.workflows', {
+    fallbackCheck: (f) => f.canManageWorkflows || f.canApproveLeave || f.canApproveTimesheet || f.isAdmin,
+  });
+  const { isVisible: canViewNavApprovals } = useComponentVisibility('nav.approvals', {
+    fallbackCheck: (f) => f.canApproveLeave || f.canApproveTimesheet || f.isAdmin,
+  });
+  const { isVisible: canViewNavReports } = useComponentVisibility('nav.reports', {
+    fallbackCheck: (f) => f.canViewReports || f.isAdmin,
+  });
+  const { isVisible: canViewNavAdministration } = useComponentVisibility('nav.administration', {
+    fallbackCheck: (f) => f.isAdmin,
+  });
+  const { isVisible: canViewNavProfile } = useComponentVisibility('nav.profile', { defaultVisible: true });
   const [isMinimized, setIsMinimized] = React.useState(true); // Start minimized
   const [isMobileOpen, setIsMobileOpen] = React.useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
@@ -146,7 +167,21 @@ export function MainLayout({ children }: MainLayoutProps) {
   const showMinimized = isMinimized && !isMobile;
 
   // Map dynamic navigation items with icons
-  const navigationItems = dynamicNavItems.map(item => ({
+  const navVisibilityMap: Record<string, boolean> = {
+    '/dashboard': canViewNavDashboard,
+    '/users': canViewNavUsers,
+    '/leave': canViewNavLeave,
+    '/timesheets': canViewNavTimesheets,
+    '/workflows': canViewNavWorkflows,
+    '/approvals/pending': canViewNavApprovals,
+    '/reports': canViewNavReports,
+    '/administration': canViewNavAdministration,
+    '/profile': canViewNavProfile,
+  };
+
+  const navigationItems = dynamicNavItems
+    .filter((item) => navVisibilityMap[item.href] ?? true)
+    .map(item => ({
     ...item,
     icon: iconMap[item.href] || LayoutDashboard,
   }));

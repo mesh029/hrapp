@@ -378,11 +378,18 @@ export async function getTimesheetSummary(filters: TimesheetSummaryFilters = {})
  * Get pending approvals dashboard
  */
 export async function getPendingApprovals(filters: DashboardFilters = {}) {
-  const { locationId, startDate, endDate } = filters;
+  const { locationId, userId, startDate, endDate } = filters;
 
   const where: Prisma.WorkflowInstanceWhereInput = {
     status: { in: ['Submitted', 'UnderReview'] },
   };
+
+  // Filter by user if provided (for employee view)
+  if (userId) {
+    where.creator = {
+      id: userId,
+    };
+  }
 
   if (startDate || endDate) {
     where.created_at = {};
@@ -494,38 +501,42 @@ export async function getDashboardData(filters: DashboardFilters = {}) {
     return JSON.parse(cached);
   }
 
-  const { locationId, staffTypeId, startDate, endDate } = filters;
+  const { locationId, staffTypeId, userId, startDate, endDate } = filters;
 
   // Get date range (default to current month)
   const now = new Date();
   const defaultStartDate = startDate || new Date(now.getFullYear(), now.getMonth(), 1);
   const defaultEndDate = endDate || new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-  // Get leave utilization
+  // Get leave utilization (filter by userId if provided)
   const leaveUtilization = await getLeaveUtilization({
     locationId,
     staffTypeId,
+    userId, // Pass userId for employee-specific filtering
     startDate: defaultStartDate,
     endDate: defaultEndDate,
   });
 
-  // Get leave balances
+  // Get leave balances (filter by userId if provided)
   const leaveBalances = await getLeaveBalanceSummary({
     locationId,
     staffTypeId,
+    userId, // Pass userId for employee-specific filtering
   });
 
-  // Get timesheet summary
+  // Get timesheet summary (filter by userId if provided)
   const timesheetSummary = await getTimesheetSummary({
     locationId,
     staffTypeId,
+    userId, // Pass userId for employee-specific filtering
     startDate: defaultStartDate,
     endDate: defaultEndDate,
   });
 
-  // Get pending approvals
+  // Get pending approvals (filter by userId if provided for employee view)
   const pendingApprovals = await getPendingApprovals({
     locationId,
+    userId, // Pass userId for employee-specific filtering
     startDate: defaultStartDate,
     endDate: defaultEndDate,
   });

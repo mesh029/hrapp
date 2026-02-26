@@ -66,7 +66,7 @@ export default function TimesheetsPage() {
       };
 
       // Apply filters based on permissions
-      if (!features.canViewAllTimesheets && user?.id) {
+      if (!features.canViewAllTimesheets && !features.canApproveTimesheet && user?.id) {
         params.user_id = user.id; // Only show own timesheets
       }
 
@@ -182,7 +182,7 @@ export default function TimesheetsPage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              {features.canViewAllTimesheets ? 'All Timesheets' : 'My Timesheets'}
+              {features.canViewAllTimesheets || features.canApproveTimesheet ? 'Team Timesheets' : 'My Timesheets'}
             </CardTitle>
           </CardHeader>
           <CardContent>

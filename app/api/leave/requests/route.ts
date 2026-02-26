@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
-import { requirePermission } from '@/lib/middleware/permissions';
+import { checkPermission, requirePermission } from '@/lib/middleware/permissions';
 import { prisma } from '@/lib/db';
 import { successResponse, errorResponse, unauthorizedResponse } from '@/lib/utils/responses';
 import { createLeaveRequestSchema, paginationSchema } from '@/lib/utils/validation';
@@ -29,29 +29,11 @@ export async function GET(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    try {
-      await requirePermission(user, 'leave.read', { locationId });
-    } catch {
-      const hasSystemAdmin = await prisma.userRole.findFirst({
-        where: {
-          user_id: user.id,
-          deleted_at: null,
-          role: {
-            status: 'active',
-            role_permissions: {
-              some: {
-                permission: {
-                  name: 'system.admin',
-                },
-              },
-            },
-          },
-        },
-      });
-
-      if (!hasSystemAdmin) {
-        return unauthorizedResponse('You do not have permission to view leave requests');
-      }
+    const hasLeaveRead = await checkPermission(user, 'leave.read', { locationId });
+    const hasLeaveCreate = await checkPermission(user, 'leave.create', { locationId });
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId });
+    if (!hasLeaveRead && !hasLeaveCreate && !isAdmin) {
+      return unauthorizedResponse('You do not have permission to view leave requests');
     }
 
     // Parse query parameters
@@ -74,7 +56,10 @@ export async function GET(request: NextRequest) {
       where.status = status;
     }
 
-    if (user_id) {
+    if (!hasLeaveRead && !isAdmin) {
+      // Users with create-only access can only view their own leave requests.
+      where.user_id = user.id;
+    } else if (user_id) {
       where.user_id = user_id;
     }
 

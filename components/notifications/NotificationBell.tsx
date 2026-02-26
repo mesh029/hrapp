@@ -50,7 +50,20 @@ export function NotificationBell() {
       } else if (notification.resource_type === 'timesheet') {
         router.push(`/timesheets/${notification.resource_id}`);
       } else if (notification.resource_type === 'workflow') {
-        // Could navigate to workflow instance view if we have one
+        const match = String(notification.message || '').match(
+          /(leave|timesheet)\s+#([0-9a-fA-F-]{36})/i
+        );
+        if (match) {
+          const resourceType = match[1].toLowerCase();
+          const resourceId = match[2];
+          if (resourceType === 'leave') {
+            router.push(`/leave/requests/${resourceId}`);
+          } else {
+            router.push(`/timesheets/${resourceId}`);
+          }
+        } else {
+          router.push('/approvals/pending');
+        }
       }
     }
 
@@ -60,7 +73,7 @@ export function NotificationBell() {
 
   const handleMarkAllRead = async () => {
     try {
-      await api.patch('/api/notifications', { is_read: true });
+      await api.patch('/api/notifications', { markAll: true });
       loadNotifications();
     } catch (error) {
       console.error('Failed to mark all as read:', error);

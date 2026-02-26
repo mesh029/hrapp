@@ -1,0 +1,44 @@
+{
+  "version": "v1",
+  "strategy": "role_profile",
+  "profiles": {
+    "system_admin": {
+      "description": "Full visibility across all modules.",
+      "visible": ["*"]
+    },
+    "hr_manager": {
+      "description": "Operational control without system administration pages.",
+      "visible_groups": [
+        "base_all_users",
+        "manager_and_up",
+        "hr_and_up"
+      ]
+    },
+    "program_officer": {
+      "description": "Approval and operational visibility without reports/admin.",
+      "visible_groups": [
+        "base_all_users",
+        "manager_and_up"
+      ]
+    },
+    "manager": {
+      "description": "Team-level visibility and approvals.",
+      "visible_groups": [
+        "base_all_users",
+        "manager_and_up"
+      ]
+    },
+    "employee": {
+      "description": "Self-service visibility only.",
+      "visible_groups": [
+        "base_all_users"
+      ]
+    }
+  },
+  "groups": {
+    "base_all_users": "Dashboard basics + leave/timesheet self-service + profile/nav essentials",
+    "manager_and_up": "Approvals, workflows, and team-level visibility",
+    "hr_and_up": "Reports, extended user management, and additional operational controls",
+    "admin_only": "Administration module and system configuration pages"
+  }
+}

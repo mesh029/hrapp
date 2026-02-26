@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRouter, useParams } from 'next/navigation';
 import { leaveService, LeaveRequest } from '@/ui/src/services/leave';
+import { workflowService } from '@/ui/src/services/workflows';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
 import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
 import { useAuth } from '@/ui/src/contexts/auth-context';
@@ -33,10 +34,17 @@ export default function LeaveRequestDetailPage() {
   const [isCancelling, setIsCancelling] = React.useState(false);
   const [workflowTimeline, setWorkflowTimeline] = React.useState<{
     has_workflow: boolean;
+    workflow_instance_id?: string;
     workflow_status?: string;
+    current_step_order?: number;
     template?: { id: string; name: string; resource_type: string };
     timeline: TimelineStep[];
   } | null>(null);
+  const [actionMode, setActionMode] = React.useState<'approve' | 'decline' | 'reroute' | null>(null);
+  const [actionComment, setActionComment] = React.useState('');
+  const [routeToStep, setRouteToStep] = React.useState<string>('');
+  const [isActioning, setIsActioning] = React.useState(false);
+  const [actionError, setActionError] = React.useState<string | null>(null);
 
   const requestId = params.id as string;
 
@@ -126,6 +134,63 @@ export default function LeaveRequestDetailPage() {
   
   const canCancel = canCancelAction;
   const canApprove = canApproveAction;
+  const workflowInstanceId = workflowTimeline?.workflow_instance_id;
+
+  const openAction = (mode: 'approve' | 'decline' | 'reroute') => {
+    setActionMode(mode);
+    setActionComment('');
+    setRouteToStep(
+      workflowTimeline?.current_step_order
+        ? String(workflowTimeline.current_step_order)
+        : ''
+    );
+    setActionError(null);
+  };
+
+  const closeAction = () => {
+    setActionMode(null);
+    setActionComment('');
+    setRouteToStep('');
+    setActionError(null);
+  };
+
+  const handleWorkflowAction = async () => {
+    if (!workflowInstanceId || !actionMode) {
+      setActionError('Workflow instance is not available for this request.');
+      return;
+    }
+
+    if ((actionMode === 'decline' || actionMode === 'reroute') && !actionComment.trim()) {
+      setActionError('Comment is required for decline/reroute actions.');
+      return;
+    }
+
+    try {
+      setIsActioning(true);
+      setActionError(null);
+
+      if (actionMode === 'approve') {
+        await workflowService.approveInstance(workflowInstanceId, actionComment.trim() || undefined);
+      } else if (actionMode === 'decline') {
+        await workflowService.declineInstance(workflowInstanceId, actionComment.trim());
+      } else {
+        const step = Number(routeToStep);
+        if (!Number.isInteger(step) || step < 1) {
+          setActionError('Select a valid step to route back to.');
+          return;
+        }
+        await workflowService.routeBackInstance(workflowInstanceId, actionComment.trim(), step);
+      }
+
+      closeAction();
+      await loadLeaveRequest();
+    } catch (error: any) {
+      console.error('Workflow action failed:', error);
+      setActionError(error.message || 'Failed to perform workflow action');
+    } finally {
+      setIsActioning(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -319,19 +384,74 @@ export default function LeaveRequestDetailPage() {
                   <div className="flex gap-2">
                     <Button
                       variant="default"
-                      onClick={() => router.push(`/workflows/approvals?request=${request.id}`)}
+                      onClick={() => openAction('approve')}
+                      disabled={!workflowInstanceId}
                     >
                       Approve
                     </Button>
                     <Button
                       variant="destructive"
-                      onClick={() => router.push(`/workflows/approvals?request=${request.id}&action=decline`)}
+                      onClick={() => openAction('decline')}
+                      disabled={!workflowInstanceId}
                     >
-                      Decline
+                      Final Decline
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => openAction('reroute')}
+                      disabled={!workflowInstanceId || !workflowTimeline?.timeline?.length}
+                    >
+                      Decline & Route Back
                     </Button>
                   </div>
                 )}
               </div>
+              {canApprove && actionMode && (
+                <div className="mt-4 border-t pt-4 space-y-3">
+                  <p className="text-sm font-medium">
+                    {actionMode === 'approve'
+                      ? 'Approve current step'
+                      : actionMode === 'decline'
+                        ? 'Final decline (request will be declined)'
+                        : 'Decline and route back for re-approval'}
+                  </p>
+                  <textarea
+                    value={actionComment}
+                    onChange={(e) => setActionComment(e.target.value)}
+                    placeholder={
+                      actionMode === 'approve'
+                        ? 'Optional approval comment'
+                        : 'Required: explain why this request is being declined'
+                    }
+                    className="w-full min-h-[90px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                  {actionMode === 'reroute' && (
+                    <div>
+                      <p className="text-sm mb-1">Route back to step</p>
+                      <select
+                        value={routeToStep}
+                        onChange={(e) => setRouteToStep(e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        {workflowTimeline?.timeline?.map((step) => (
+                          <option key={step.step_order} value={String(step.step_order)}>
+                            Step {step.step_order} ({step.required_permission})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={closeAction} disabled={isActioning}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleWorkflowAction} disabled={isActioning}>
+                      {isActioning ? 'Processing...' : 'Submit'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

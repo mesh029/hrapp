@@ -58,13 +58,12 @@ export async function findWorkflowTemplate(params: FindWorkflowTemplateParams): 
       location_id: locationId,
       resource_type: resourceType,
       status: 'active',
+      workflow_template: {
+        status: 'active', // Ensure the assigned template is still active
+      },
     },
     include: {
-      workflow_template: {
-        where: {
-          status: 'active', // Ensure the assigned template is still active
-        },
-      },
+      workflow_template: true,
     },
     orderBy: { assigned_at: 'desc' }, // Most recent assignment wins if multiple
   });
@@ -334,21 +333,21 @@ export async function submitWorkflowInstance(instanceId: string): Promise<void> 
   });
 
   // Resolve approvers for first step
-  const approvers = await resolveApprovers(firstStep.step_order, instanceId, locationId, {
+    const approvers = await resolveApprovers(firstStep.step_order, instanceId, locationId, {
     stepConfig: firstStep,
-  });
+    });
 
   // Notify approvers
-  for (const approverId of approvers) {
-    await NotificationHelpers.notifyWorkflowStepAssignment(
-      approverId,
-      instanceId,
-      instance.resource_type,
-      instance.resource_id,
-      firstStep.step_order
-    ).catch((error) => {
-      console.error(`Failed to notify approver ${approverId}:`, error);
-    });
+    for (const approverId of approvers) {
+      await NotificationHelpers.notifyWorkflowStepAssignment(
+        approverId,
+        instanceId,
+        instance.resource_type,
+        instance.resource_id,
+        firstStep.step_order
+      ).catch((error) => {
+        console.error(`Failed to notify approver ${approverId}:`, error);
+      });
   }
 }
 
@@ -680,29 +679,29 @@ export async function resolveApprovers(
     });
 
     const roleUsers = await prisma.user.findMany({
-      where: {
-        status: 'active',
-        deleted_at: null,
-        user_roles: {
-          some: {
+    where: {
+      status: 'active',
+      deleted_at: null,
+      user_roles: {
+        some: {
             role_id: { in: requiredRoles },
-            deleted_at: null,
-            role: {
-              status: 'active',
-              role_permissions: {
-                some: {
-                  permission: {
-                    OR: [
+          deleted_at: null,
+          role: {
+            status: 'active',
+            role_permissions: {
+              some: {
+                permission: {
+                  OR: [
                       { name: stepConfig.required_permission },
                       { id: stepConfig.required_permission },
-                    ],
-                  },
+                  ],
                 },
               },
             },
           },
         },
       },
+    },
       include: {
         primary_location: {
           select: { id: true, name: true },
@@ -744,20 +743,20 @@ export async function resolveApprovers(
       });
 
       if (shouldInclude) {
-        const authority = await checkAuthority({
+    const authority = await checkAuthority({
           userId: roleUser.id,
           permission: stepConfig.required_permission,
           locationId: userLocationId,
-          workflowStepOrder: stepOrder,
-          workflowInstanceId,
-        });
+      workflowStepOrder: stepOrder,
+      workflowInstanceId,
+    });
 
         console.log(`[Workflow] Authority check for ${roleUser.name}:`, {
           authorized: authority.authorized,
           source: authority.source,
         });
 
-        if (authority.authorized) {
+    if (authority.authorized) {
           approverSet.add(roleUser.id);
           console.log(`[Workflow] ✅ Role user ${roleUser.name} (${roleUser.id}) added as approver for step ${stepOrder}`);
         } else {
@@ -1067,11 +1066,19 @@ export async function approveWorkflowStep(params: WorkflowActionParams): Promise
     step_status: stepInstance.status,
   };
 
+  const approveSignature = await generateDigitalSignature({
+    userId,
+    workflowInstanceId: instanceId,
+    stepOrder: instance.current_step_order,
+    action: 'approve',
+    timestamp: new Date(),
+  });
+
   await prisma.workflowStepInstance.update({
     where: {
       workflow_instance_id_step_order: {
-        workflow_instance_id: instanceId,
-        step_order: instance.current_step_order,
+      workflow_instance_id: instanceId,
+      step_order: instance.current_step_order,
       },
     },
     data: {
@@ -1081,7 +1088,7 @@ export async function approveWorkflowStep(params: WorkflowActionParams): Promise
       comment: comment || null,
       ip_address: ipAddress || null,
       user_agent: userAgent || null,
-      digital_signature: await generateDigitalSignature(userId, instanceId, 'approve'),
+      digital_signature: approveSignature.token,
     },
   });
 
@@ -1297,11 +1304,19 @@ export async function declineWorkflowStep(params: WorkflowActionParams): Promise
     current_step_order: instance.current_step_order,
   };
 
+  const declineSignature = await generateDigitalSignature({
+    userId,
+    workflowInstanceId: instanceId,
+    stepOrder: instance.current_step_order,
+    action: 'decline',
+    timestamp: new Date(),
+  });
+
   await prisma.workflowStepInstance.update({
     where: {
       workflow_instance_id_step_order: {
-        workflow_instance_id: instanceId,
-        step_order: instance.current_step_order,
+      workflow_instance_id: instanceId,
+      step_order: instance.current_step_order,
       },
     },
     data: {
@@ -1311,7 +1326,7 @@ export async function declineWorkflowStep(params: WorkflowActionParams): Promise
       comment: comment || null,
       ip_address: ipAddress || null,
       user_agent: userAgent || null,
-      digital_signature: await generateDigitalSignature(userId, instanceId, 'decline'),
+      digital_signature: declineSignature.token,
     },
   });
 
@@ -1415,11 +1430,19 @@ export async function adjustWorkflowStep(params: WorkflowActionParams): Promise<
     current_step_order: instance.current_step_order,
   };
 
+  const adjustSignature = await generateDigitalSignature({
+    userId,
+    workflowInstanceId: instanceId,
+    stepOrder: instance.current_step_order,
+    action: 'adjust',
+    timestamp: new Date(),
+  });
+
   await prisma.workflowStepInstance.update({
     where: {
       workflow_instance_id_step_order: {
-        workflow_instance_id: instanceId,
-        step_order: instance.current_step_order,
+      workflow_instance_id: instanceId,
+      step_order: instance.current_step_order,
       },
     },
     data: {
@@ -1429,7 +1452,7 @@ export async function adjustWorkflowStep(params: WorkflowActionParams): Promise<
       comment: comment || null,
       ip_address: ipAddress || null,
       user_agent: userAgent || null,
-      digital_signature: await generateDigitalSignature(userId, instanceId, 'adjust'),
+      digital_signature: adjustSignature.token,
     },
   });
 
@@ -1439,54 +1462,54 @@ export async function adjustWorkflowStep(params: WorkflowActionParams): Promise<
     : instance.template.steps[0].step_order;
 
   const targetStep = instance.template.steps.find((s) => s.step_order === targetStepOrder);
-  if (!targetStep) {
+    if (!targetStep) {
     throw new Error('Target step not found');
-  }
+    }
 
-  await prisma.workflowInstance.update({
-    where: { id: instanceId },
-    data: {
+    await prisma.workflowInstance.update({
+      where: { id: instanceId },
+      data: {
       status: 'Adjusted',
       current_step_order: targetStepOrder,
-    },
-  });
+      },
+    });
 
-  const afterState = {
+    const afterState = {
     status: 'Adjusted',
     current_step_order: targetStepOrder,
-    step_status: 'adjusted',
-  };
+      step_status: 'adjusted',
+    };
 
-  await AuditHelpers.logWorkflowAction(
-    userId,
-    'adjust',
-    instanceId,
-    instance.resource_type,
-    instance.resource_id,
-    beforeState,
-    afterState,
+    await AuditHelpers.logWorkflowAction(
+      userId,
+      'adjust',
+      instanceId,
+      instance.resource_type,
+      instance.resource_id,
+      beforeState,
+      afterState,
     { step_order: instance.current_step_order, routed_to: targetStepOrder, comment },
-    ipAddress
-  ).catch((error) => {
+      ipAddress
+    ).catch((error) => {
     console.error('Failed to create audit log for workflow adjustment:', error);
   });
 
   // Resolve approvers for target step
   const approvers = await resolveApprovers(targetStepOrder, instanceId, locationId, {
     stepConfig: targetStep,
-  });
-
-  for (const approverId of approvers) {
-    await NotificationHelpers.notifyWorkflowStepAssignment(
-      approverId,
-      instanceId,
-      instance.resource_type,
-      instance.resource_id,
-      targetStepOrder
-    ).catch((error) => {
-      console.error(`Failed to notify approver ${approverId}:`, error);
     });
-  }
+
+    for (const approverId of approvers) {
+      await NotificationHelpers.notifyWorkflowStepAssignment(
+        approverId,
+        instanceId,
+        instance.resource_type,
+        instance.resource_id,
+      targetStepOrder
+      ).catch((error) => {
+        console.error(`Failed to notify approver ${approverId}:`, error);
+      });
+    }
 
   // Update resource status
   if (instance.resource_type === 'leave') {

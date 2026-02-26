@@ -33,8 +33,10 @@ export async function PATCH(
       return errorResponse('No location available for permission check', 400);
     }
 
-    const hasPermission = await checkPermission(user, 'timesheets.update', { locationId: locationId_hasPermission });
-    if (!hasPermission) {
+    const hasUpdatePermission = await checkPermission(user, 'timesheet.update', { locationId: locationId_hasPermission });
+    const hasCreatePermission = await checkPermission(user, 'timesheet.create', { locationId: locationId_hasPermission });
+    const isAdminPermission = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
+    if (!hasUpdatePermission && !hasCreatePermission && !isAdminPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 

@@ -32,8 +32,10 @@ export async function GET(
       return errorResponse('No location available for permission check', 400);
     }
 
-    const hasPermission = await checkPermission(user, 'timesheets.read', { locationId: locationId_hasPermission });
-    if (!hasPermission) {
+    const hasReadPermission = await checkPermission(user, 'timesheet.read', { locationId: locationId_hasPermission });
+    const hasCreatePermission = await checkPermission(user, 'timesheet.create', { locationId: locationId_hasPermission });
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
+    if (!hasReadPermission && !hasCreatePermission && !isAdmin) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 
@@ -101,7 +103,6 @@ export async function GET(
     }
 
     // Check if user can access this timesheet
-    const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
     if (!isAdmin && timesheet.user_id !== user.id) {
       return errorResponse('Forbidden: You can only access your own timesheets', 403);
     }

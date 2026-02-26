@@ -5,6 +5,7 @@ import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse 
 import { uuidSchema } from '@/lib/utils/validation';
 import { createWorkflowInstance, submitWorkflowInstance, findWorkflowTemplate } from '@/lib/services/workflow';
 import { addPendingDays } from '@/lib/services/leave-balance';
+import { checkPermission } from '@/lib/middleware/permissions';
 
 /**
  * POST /api/leave/requests/[id]/submit
@@ -16,6 +17,23 @@ export async function POST(
 ) {
   try {
     const user = await authenticate(request);
+
+    const userWithLocation = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+    const permissionLocationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    if (!permissionLocationId) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    const canSubmitLeave =
+      (await checkPermission(user, 'leave.submit', { locationId: permissionLocationId })) ||
+      (await checkPermission(user, 'leave.create', { locationId: permissionLocationId })) ||
+      (await checkPermission(user, 'system.admin', { locationId: permissionLocationId }));
+    if (!canSubmitLeave) {
+      return unauthorizedResponse('You do not have permission to submit leave requests');
+    }
 
     // Validate UUID
     const validationResult = uuidSchema.safeParse(params.id);

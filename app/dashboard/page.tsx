@@ -10,11 +10,49 @@ import { usersService } from '@/ui/src/services/users';
 import { useRouter } from 'next/navigation';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
 import { useAuth } from '@/ui/src/contexts/auth-context';
+import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { features, isLoading: uiLoading } = useDynamicUI();
+
+  const { isVisible: canViewTotalUsersCard } = useComponentVisibility('dashboard.stats.total-users', {
+    fallbackCheck: (f) => f.isAdmin || f.canViewAllUsers || f.canApproveLeave,
+  });
+  const { isVisible: canViewPendingLeaveCard } = useComponentVisibility('dashboard.stats.pending-leave', {
+    defaultVisible: true,
+  });
+  const { isVisible: canViewPendingTimesheetsCard } = useComponentVisibility('dashboard.stats.pending-timesheets', {
+    defaultVisible: true,
+  });
+  const { isVisible: canViewPendingApprovalsCard } = useComponentVisibility('dashboard.stats.pending-approvals', {
+    fallbackCheck: (f) => f.isAdmin || f.canApproveLeave || f.canApproveTimesheet,
+  });
+  const { isVisible: canViewQuickLinks } = useComponentVisibility('dashboard.quick-links', {
+    defaultVisible: true,
+  });
+  const { isVisible: canCreateUserAction } = useComponentVisibility('dashboard.actions.create-user', {
+    fallbackCheck: (f) => f.canCreateUsers,
+  });
+  const { isVisible: canManageUsersAction } = useComponentVisibility('dashboard.actions.manage-users', {
+    fallbackCheck: (f) => f.canManageUsers,
+  });
+  const { isVisible: canCreateLeaveAction } = useComponentVisibility('dashboard.actions.create-leave', {
+    fallbackCheck: (f) => f.canCreateLeave,
+  });
+  const { isVisible: canApproveLeaveAction } = useComponentVisibility('dashboard.actions.approve-leave', {
+    fallbackCheck: (f) => f.canApproveLeave,
+  });
+  const { isVisible: canCreateTimesheetAction } = useComponentVisibility('dashboard.actions.create-timesheet', {
+    fallbackCheck: (f) => f.canCreateTimesheet,
+  });
+  const { isVisible: canApproveTimesheetAction } = useComponentVisibility('dashboard.actions.approve-timesheets', {
+    fallbackCheck: (f) => f.canApproveTimesheet,
+  });
+  const { isVisible: canViewReportsAction } = useComponentVisibility('dashboard.actions.view-reports', {
+    fallbackCheck: (f) => f.canViewReports,
+  });
   const [stats, setStats] = React.useState({
     totalUsers: 0,
     activeUsers: 0,
@@ -27,131 +65,88 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
-    loadDashboardData();
-  }, []);
+    if (user?.id && !uiLoading) {
+      loadDashboardData();
+    }
+  }, [user?.id, uiLoading]);
 
   const loadDashboardData = async () => {
     try {
       setIsLoading(true);
-      
-      // Load users count
-      try {
-        const usersResponse = await usersService.getUsers({ limit: 1 });
-        if (usersResponse.success && usersResponse.data) {
-          const usersData = usersResponse.data as any;
-          const totalUsers = usersData.pagination?.total || usersData.users?.length || 0;
-          
-          // Get active users count
-          const activeUsersResponse = await usersService.getUsers({ limit: 1000, status: 'active' });
-          const activeUsersData = activeUsersResponse.data as any;
-          const activeUsers = activeUsersData.pagination?.total || 
-            (Array.isArray(activeUsersData.users) ? 
-              activeUsersData.users.filter((u: any) => u.status === 'active').length : 0);
-          
-          setStats(prev => ({
-            ...prev,
-            totalUsers,
-            activeUsers,
-          }));
-        }
-      } catch (error) {
-        console.error('Failed to load users:', error);
+      const userDetails = user?.id ? await usersService.getUser(user.id).catch(() => null) : null;
+      const userData = (userDetails && (userDetails as any).success) ? (userDetails as any).data : null;
+      const scopedLocationId = userData?.primary_location_id || userData?.location_id;
+      const isApprover = features.canApproveLeave || features.canApproveTimesheet;
+      const isManagerScoped = !features.isAdmin && isApprover && !features.canViewAllUsers;
+
+      const dashboardFilters: { location_id?: string; user_id?: string } = {};
+      if (!features.isAdmin) {
+        if (scopedLocationId) dashboardFilters.location_id = scopedLocationId;
+        if (!isApprover && user?.id) dashboardFilters.user_id = user.id;
       }
 
-      // Load dashboard stats
-      try {
-        const dashboardResponse = await dashboardService.getDashboardStats();
-        if (dashboardResponse.success && dashboardResponse.data) {
-          const data = dashboardResponse.data as any;
-          
-          // Extract counts from nested structure
-          // Leave requests: count pending requests (UnderReview or Draft status)
-          const pendingLeaveCount = data.leave?.utilization?.summary?.pendingDays ? 
-            Math.ceil(data.leave.utilization.summary.pendingDays) : 
-            (data.leave?.utilization?.pendingDays ? 
-              Math.ceil(data.leave.utilization.pendingDays) : 0);
-          
-          // Timesheets: count from timesheets summary
-          const pendingTimesheetsCount = data.timesheets?.pendingTimesheets || 
-                                        data.timesheets?.summary?.pendingTimesheets || 0;
-          
-          // Approvals: count from approvals summary
-          const pendingApprovalsCount = data.approvals?.summary?.totalPending || 
-                                       data.approvals?.total || 0;
-          
-          setStats(prev => ({
-            ...prev,
-            pendingLeaveRequests: pendingLeaveCount,
-            pendingTimesheets: pendingTimesheetsCount,
-            pendingApprovals: pendingApprovalsCount,
-          }));
-        }
-      } catch (error) {
-        console.error('Failed to load dashboard stats:', error);
-        // Try to get pending approvals separately as fallback
-        try {
-          const approvalsResponse = await dashboardService.getPendingApprovals();
-          if (approvalsResponse.success && approvalsResponse.data) {
-            setStats(prev => ({
-              ...prev,
-              pendingApprovals: (approvalsResponse.data as any).summary?.totalPending || 
-                               (approvalsResponse.data as any).total || 0,
-            }));
-          }
-        } catch (approvalsError) {
-          console.error('Failed to load pending approvals:', approvalsError);
-        }
-      }
-
-      // Load employee counts (direct reports and location-based)
-      if (user?.id) {
-        try {
-          // Get user details first
-          const userDetails = await usersService.getUser(user.id);
-          if (userDetails.success && userDetails.data) {
-            const userData = userDetails.data as any;
-            const locationId = userData.primary_location_id || userData.location_id;
-
-            // Get all active users and filter client-side
-            const allUsersRes = await usersService.getUsers({ 
-              limit: 1000,
-              status: 'active',
-            });
-            const allUsersData = allUsersRes.data as any;
-            const allUsers = Array.isArray(allUsersData.users) 
-              ? allUsersData.users 
-              : (allUsersData.data?.users || []);
-
-            // Count direct reports
-            const directReports = allUsers.filter((u: any) => 
-              u.manager_id === user.id && u.status === 'active'
-            ).length;
-
-            // Count location-based employees
-            let locationEmployees = 0;
-            if (locationId) {
-              locationEmployees = allUsers.filter((u: any) => 
-                u.status === 'active' && 
-                (u.primary_location_id === locationId || u.location_id === locationId)
-              ).length;
+      const usersStatsPromise = (features.isAdmin || features.canViewAllUsers || features.canApproveLeave)
+        ? (async () => {
+            if (isManagerScoped && user?.id) {
+              const teamRes = await usersService.getUsers({
+                limit: 1000,
+                location_id: scopedLocationId,
+              });
+              const users = (teamRes as any)?.data?.users || [];
+              const directReports = Array.isArray(users)
+                ? users.filter((u: any) => u.manager_id === user.id)
+                : [];
+              return {
+                totalUsers: directReports.length,
+                activeUsers: directReports.filter((u: any) => u.status === 'active').length,
+              };
             }
 
-            setStats(prev => ({
-              ...prev,
-              directReports,
-              locationEmployees,
-            }));
-          }
-        } catch (error) {
-          console.error('Failed to load employee counts:', error);
-        }
-      }
+            const [totalRes, activeRes] = await Promise.all([
+              usersService.getUsers({ limit: 1, location_id: scopedLocationId }),
+              usersService.getUsers({ limit: 1, status: 'active', location_id: scopedLocationId }),
+            ]);
+            return {
+              totalUsers: (totalRes as any)?.data?.pagination?.total || 0,
+              activeUsers: (activeRes as any)?.data?.pagination?.total || 0,
+            };
+          })()
+        : Promise.resolve({ totalUsers: 0, activeUsers: 0 });
+
+      const dashboardPromise = dashboardService.getDashboardStats(dashboardFilters);
+      const [usersStats, dashboardResponse] = await Promise.all([usersStatsPromise, dashboardPromise]);
+
+      const data = (dashboardResponse as any)?.success ? (dashboardResponse as any).data : null;
+      const pendingLeaveCount = data?.leave?.utilization?.summary?.pendingDays
+        ? Math.ceil(data.leave.utilization.summary.pendingDays)
+        : (data?.leave?.utilization?.pendingDays ? Math.ceil(data.leave.utilization.pendingDays) : 0);
+      const pendingTimesheetsCount = data?.timesheets?.pendingTimesheets || data?.timesheets?.summary?.pendingTimesheets || 0;
+      const pendingApprovalsCount = data?.approvals?.summary?.totalPending || data?.approvals?.total || 0;
+
+      setStats((prev) => ({
+        ...prev,
+        totalUsers: usersStats.totalUsers,
+        activeUsers: usersStats.activeUsers,
+        pendingLeaveRequests: pendingLeaveCount,
+        pendingTimesheets: pendingTimesheetsCount,
+        pendingApprovals: pendingApprovalsCount,
+      }));
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const displayStat = (value: number) => {
+    if (!features.isAdmin && value === 0) return '--';
+    return value;
+  };
+
+  const pendingItemsTotal =
+    stats.pendingLeaveRequests +
+    stats.pendingTimesheets +
+    (features.canApproveLeave || features.canApproveTimesheet ? stats.pendingApprovals : 0);
 
   return (
     <MainLayout>
@@ -165,68 +160,78 @@ export default function DashboardPage() {
 
         {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {canViewTotalUsersCard && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Users</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{isLoading ? '...' : stats.totalUsers}</div>
+              <div className="text-2xl font-bold">{isLoading ? '...' : displayStat(stats.totalUsers)}</div>
               <p className="text-xs text-muted-foreground">
-                {stats.activeUsers} active users
+                {isLoading ? '...' : `${displayStat(stats.activeUsers)} active users`}
               </p>
             </CardContent>
           </Card>
+          )}
 
+          {canViewPendingLeaveCard && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Pending Leave Requests</CardTitle>
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{isLoading ? '...' : stats.pendingLeaveRequests}</div>
+              <div className="text-2xl font-bold">{isLoading ? '...' : displayStat(stats.pendingLeaveRequests)}</div>
               <p className="text-xs text-muted-foreground">
                 Leave requests awaiting approval
               </p>
             </CardContent>
           </Card>
+          )}
 
+          {canViewPendingTimesheetsCard && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Pending Timesheets</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{isLoading ? '...' : stats.pendingTimesheets}</div>
+              <div className="text-2xl font-bold">{isLoading ? '...' : displayStat(stats.pendingTimesheets)}</div>
               <p className="text-xs text-muted-foreground">
                 Timesheets awaiting submission or approval
               </p>
             </CardContent>
           </Card>
+          )}
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{isLoading ? '...' : stats.pendingApprovals}</div>
-              <p className="text-xs text-muted-foreground">
-                Items requiring your approval
-              </p>
-            </CardContent>
-          </Card>
+          {/* Pending Approvals - Only show for Admin, HR Manager, Program Officer, Manager */}
+          {(features.isAdmin || features.canApproveLeave || features.canApproveTimesheet) && canViewPendingApprovalsCard && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
+                <CheckCircle className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{isLoading ? '...' : displayStat(stats.pendingApprovals)}</div>
+                <p className="text-xs text-muted-foreground">
+                  Items requiring your approval
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Quick Actions */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {canViewQuickLinks && (
           <Card>
             <CardHeader>
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               {/* User Management Actions */}
-              {features.canCreateUsers && (
+              {features.canCreateUsers && canCreateUserAction && (
                 <Button 
                   className="w-full justify-start" 
                   variant="outline"
@@ -236,7 +241,7 @@ export default function DashboardPage() {
                   Create New User
                 </Button>
               )}
-              {features.canManageUsers && (
+              {features.canManageUsers && canManageUsersAction && (
                 <Button 
                   className="w-full justify-start" 
                   variant="outline"
@@ -248,7 +253,7 @@ export default function DashboardPage() {
               )}
 
               {/* Leave Actions */}
-              {features.canCreateLeave && (
+              {features.canCreateLeave && canCreateLeaveAction && (
                 <Button 
                   className="w-full justify-start" 
                   variant="outline"
@@ -258,7 +263,7 @@ export default function DashboardPage() {
                   Create Leave Request
                 </Button>
               )}
-              {features.canApproveLeave && (
+              {features.canApproveLeave && canApproveLeaveAction && (
                 <Button 
                   className="w-full justify-start" 
                   variant="outline"
@@ -270,7 +275,7 @@ export default function DashboardPage() {
               )}
 
               {/* Timesheet Actions */}
-              {features.canCreateTimesheet && (
+              {features.canCreateTimesheet && canCreateTimesheetAction && (
                 <Button 
                   className="w-full justify-start" 
                   variant="outline"
@@ -280,7 +285,7 @@ export default function DashboardPage() {
                   Create Timesheet
                 </Button>
               )}
-              {features.canApproveTimesheet && (
+              {features.canApproveTimesheet && canApproveTimesheetAction && (
                 <Button 
                   className="w-full justify-start" 
                   variant="outline"
@@ -292,7 +297,7 @@ export default function DashboardPage() {
               )}
 
               {/* Reports */}
-              {features.canViewReports && (
+              {features.canViewReports && canViewReportsAction && (
                 <Button 
                   className="w-full justify-start" 
                   variant="outline"
@@ -304,24 +309,31 @@ export default function DashboardPage() {
               )}
             </CardContent>
           </Card>
+          )}
 
           <Card>
             <CardHeader>
-              <CardTitle>System Overview</CardTitle>
+              <CardTitle>
+                {features.isAdmin ? 'System Overview' : features.canViewAllUsers ? 'Location Overview' : features.canApproveLeave ? 'Team Overview' : 'My Overview'}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Active Users</span>
-                <span className="text-sm font-medium">{stats.activeUsers}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Total Users</span>
-                <span className="text-sm font-medium">{stats.totalUsers}</span>
-              </div>
+              {(features.isAdmin || features.canViewAllUsers || features.canApproveLeave) && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Active {features.isAdmin ? 'Users' : features.canViewAllUsers ? 'Users' : 'Members'}</span>
+                    <span className="text-sm font-medium">{displayStat(stats.activeUsers)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Total {features.isAdmin ? 'Users' : features.canViewAllUsers ? 'Users' : 'Members'}</span>
+                    <span className="text-sm font-medium">{displayStat(stats.totalUsers)}</span>
+                  </div>
+                </>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Pending Items</span>
                 <span className="text-sm font-medium">
-                  {stats.pendingLeaveRequests + stats.pendingTimesheets + stats.pendingApprovals}
+                  {displayStat(pendingItemsTotal)}
                 </span>
               </div>
             </CardContent>
