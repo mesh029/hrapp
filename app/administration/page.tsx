@@ -19,7 +19,6 @@ import {
   Clock,
   BarChart,
   Workflow
-  Clock,
 } from 'lucide-react';
 
 const COMPONENT_ID_VIEW = 'admin.dashboard.view';
