@@ -39,14 +39,14 @@ export function useDynamicUI() {
         label: 'Leave',
         icon: null,
         requiredPermissions: [],
-        anyPermission: ['leave.read', 'leave.create', 'leave.approve', 'system.admin'],
+        anyPermission: ['leave.read', 'leave.create', 'leave.submit', 'leave.approve', 'system.admin'],
       },
       {
         href: '/timesheets',
         label: 'Timesheets',
         icon: null,
         requiredPermissions: [],
-        anyPermission: ['timesheet.read', 'timesheet.create', 'timesheet.approve', 'system.admin'],
+        anyPermission: ['timesheet.read', 'timesheet.create', 'timesheet.submit', 'timesheet.approve', 'system.admin'],
       },
       {
         href: '/workflows',
@@ -115,12 +115,14 @@ export function useDynamicUI() {
       canViewAllUsers: hasPermission('users.read') || isAdmin,
       // Admins can view and manage leave, but NOT create their own leave requests
       // Leave creation is for employees only
-      canCreateLeave: hasPermission('leave.create') && !isAdmin,
+      canCreateLeave: (hasPermission('leave.create') || hasPermission('leave.submit')) && !isAdmin,
+      canSubmitLeave: hasPermission('leave.submit') || hasPermission('leave.create') || isAdmin,
       canApproveLeave: hasPermission('leave.approve') || isAdmin,
       canViewAllLeave: hasPermission('leave.read') || isAdmin,
-      canViewOwnLeave: hasPermission('leave.create') || hasPermission('leave.read') || isAdmin,
+      canViewOwnLeave: hasPermission('leave.create') || hasPermission('leave.submit') || hasPermission('leave.read') || isAdmin,
       // Admins typically don't create their own timesheets either
-      canCreateTimesheet: hasPermission('timesheet.create') && !isAdmin,
+      canCreateTimesheet: (hasPermission('timesheet.create') || hasPermission('timesheet.submit')) && !isAdmin,
+      canSubmitTimesheet: hasPermission('timesheet.submit') || hasPermission('timesheet.create') || isAdmin,
       canApproveTimesheet: hasPermission('timesheet.approve') || isAdmin,
       canViewAllTimesheets: hasPermission('timesheet.read') || isAdmin,
       canManageWorkflows: hasPermission('workflows.manage') || isAdmin,

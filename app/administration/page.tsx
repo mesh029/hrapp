@@ -19,6 +19,7 @@ import {
   Clock,
   BarChart,
   Workflow
+  Clock,
 } from 'lucide-react';
 
 const COMPONENT_ID_VIEW = 'admin.dashboard.view';
@@ -85,6 +86,24 @@ export default function AdministrationPage() {
       href: '/administration/workflow-assignments',
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
+    },
+    {
+      id: 'leave-accrual',
+      title: 'Leave Accrual',
+      description: 'Configure monthly/quarterly/annual leave earning rules',
+      icon: Calendar,
+      href: '/administration/leave-accrual',
+      color: 'text-emerald-600',
+      bgColor: 'bg-emerald-50',
+    },
+    {
+      id: 'work-hours',
+      title: 'Work Hours Configuration',
+      description: 'Configure work hours per staff type and location',
+      icon: Clock,
+      href: '/administration/work-hours',
+      color: 'text-teal-600',
+      bgColor: 'bg-teal-50',
     },
     {
       id: 'configuration',

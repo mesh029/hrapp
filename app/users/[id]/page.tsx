@@ -5,7 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { MainLayout } from '@/components/layouts/main-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Edit, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, Edit, Trash2, Shield } from 'lucide-react';
 import { usersService } from '@/ui/src/services/users';
 
 export default function UserDetailPage() {
@@ -23,14 +24,33 @@ export default function UserDetailPage() {
     }
   }, [userId]);
 
+  // Reload when returning from edit page
+  React.useEffect(() => {
+    const handleFocus = () => {
+      if (userId) {
+        loadUser();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [userId]);
+
   const loadUser = async () => {
     try {
       setIsLoading(true);
+      setError('');
       const response = await usersService.getUser(userId);
+      console.log('User detail page - loadUser response:', response);
       if (response.success && response.data) {
-        setUser(response.data);
+        const userData = response.data;
+        console.log('User detail page - user data:', userData);
+        console.log('User detail page - user_roles:', userData.user_roles);
+        setUser(userData);
+      } else {
+        setError('Failed to load user data');
       }
     } catch (err: any) {
+      console.error('User detail page - loadUser error:', err);
       setError(err.message || 'Failed to load user');
     } finally {
       setIsLoading(false);
@@ -162,6 +182,31 @@ export default function UserDetailPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Roles Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Roles
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {user.user_roles && user.user_roles.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {user.user_roles
+                  .filter((ur: any) => ur.role && ur.role.status === 'active')
+                  .map((ur: any) => (
+                    <Badge key={ur.role.id} variant="secondary" className="text-sm">
+                      {ur.role.name}
+                    </Badge>
+                  ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No roles assigned</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </MainLayout>
   );

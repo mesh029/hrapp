@@ -44,13 +44,19 @@ export async function createTimesheet(data: {
 
   // Sync country holidays to location (if not already synced)
   // This ensures all country holidays are available as Holiday records
-  await syncCountryHolidaysToLocation(
-    'KE', // Default country code (Kenya)
-    data.locationId,
-    data.periodStart,
-    data.periodEnd,
-    data.userId // Created by user
-  );
+  // Wrap in try-catch to prevent blocking timesheet creation if holiday sync fails
+  try {
+    await syncCountryHolidaysToLocation(
+      'KE', // Default country code (Kenya)
+      data.locationId,
+      data.periodStart,
+      data.periodEnd,
+      data.userId // Created by user
+    );
+  } catch (error) {
+    console.warn('Failed to sync country holidays (non-blocking):', error);
+    // Continue with timesheet creation even if holiday sync fails
+  }
 
   // Create timesheet
   const timesheet = await prisma.timesheet.create({
@@ -71,18 +77,23 @@ export async function createTimesheet(data: {
   );
 
   // Get approved leave requests for this user in this period
+  // Use date range overlap logic: leave overlaps if start <= periodEnd AND end >= periodStart
   const approvedLeaves = await prisma.leaveRequest.findMany({
     where: {
       user_id: data.userId,
       status: 'Approved',
-      start_date: { lte: data.periodEnd },
-      end_date: { gte: data.periodStart },
       deleted_at: null,
+      AND: [
+        { start_date: { lte: data.periodEnd } },
+        { end_date: { gte: data.periodStart } },
+      ],
     },
     include: {
       leave_type: true,
     },
   });
+  
+  console.log(`[createTimesheet] Found ${approvedLeaves.length} approved leaves for user ${data.userId} in period ${data.periodStart.toISOString()} to ${data.periodEnd.toISOString()}`);
 
   // Create entries for all days in period
   const entries: Array<{
@@ -106,11 +117,35 @@ export async function createTimesheet(data: {
     const dayOfWeek = currentDate.getDay();
 
     // Get expected hours from work hours config
-    const expectedHours = await getWorkHoursForDate(
-      currentDate,
-      user.staff_type_id ?? null,
-      data.locationId
-    );
+    // Weekends (Saturday=6, Sunday=0) should return 0 if not configured
+    // Weekdays should default to 8 hours if no config found
+    let expectedHours = 0;
+    try {
+      const configHours = await getWorkHoursForDate(
+        currentDate,
+        user.staff_type_id ?? null,
+        data.locationId
+      );
+      // If config returns 0 or null, check if it's a weekday
+      // Weekdays (1-5) should default to 8, weekends (0,6) should be 0
+      if (configHours === 0 || configHours === null) {
+        const dayOfWeek = currentDate.getDay();
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+          // Weekday with no config - default to 8 hours
+          expectedHours = 8;
+        } else {
+          // Weekend - keep at 0
+          expectedHours = 0;
+        }
+      } else {
+        expectedHours = configHours;
+      }
+    } catch (error) {
+      console.warn(`Failed to get work hours for date ${dateStr}:`, error);
+      // On error, default based on day of week
+      const dayOfWeek = currentDate.getDay();
+      expectedHours = (dayOfWeek >= 1 && dayOfWeek <= 5) ? 8 : 0;
+    }
 
     // Check if this date is a holiday
     const holiday = holidays.find(
@@ -129,12 +164,14 @@ export async function createTimesheet(data: {
       const checkDate = new Date(currentDate);
       checkDate.setHours(0, 0, 0, 0);
 
+      // Check if current date falls within leave period (inclusive)
       if (checkDate >= leaveStart && checkDate <= leaveEnd) {
         leaveRequest = leave;
         // IMPORTANT: All leave types share the same hours - they use the expected work hours
         // for that day from work hours config (based on staff type + location + day of week).
         // Leave types (sick, vacation, etc.) do NOT have their own specific hours.
         leaveHours = new Decimal(expectedHours);
+        console.log(`[createTimesheet] Date ${dateStr} matches approved leave: ${leave.leave_type?.name || 'Unknown'} (${leave.start_date} to ${leave.end_date})`);
         break;
       }
     }
@@ -171,9 +208,29 @@ export async function createTimesheet(data: {
   }
 
   // Bulk create entries
-  await prisma.timesheetEntry.createMany({
-    data: entries,
-  });
+  // Use createMany with skipDuplicates to handle any potential conflicts
+  try {
+    await prisma.timesheetEntry.createMany({
+      data: entries,
+      skipDuplicates: true,
+    });
+  } catch (error: any) {
+    console.error('Failed to create timesheet entries:', error);
+    // If bulk create fails, try creating individually (slower but more reliable)
+    if (error.code === 'P2002' || error.code === 'P2003') {
+      // Unique constraint or foreign key violation - try individual creates
+      for (const entry of entries) {
+        try {
+          await prisma.timesheetEntry.create({ data: entry });
+        } catch (individualError) {
+          console.error(`Failed to create entry for date ${entry.date}:`, individualError);
+          // Continue with other entries
+        }
+      }
+    } else {
+      throw error; // Re-throw if it's not a constraint violation
+    }
+  }
 
   // Calculate total hours for timesheet
   const totalHours = entries.reduce(
@@ -226,9 +283,18 @@ export async function updateTimesheetEntries(
     }
 
     // Recalculate total hours
+    // IMPORTANT: Enforce mutual exclusivity - if work hours are entered, clear leave/holiday hours
     const workHours = new Decimal(entryData.work_hours);
-    const leaveHours = existingEntry.leave_hours;
-    const holidayHours = existingEntry.holiday_hours;
+    let leaveHours = existingEntry.leave_hours;
+    let holidayHours = existingEntry.holiday_hours;
+    
+    // If work hours are being set (> 0), clear leave and holiday hours (mutual exclusivity)
+    // This ensures only one type of hours is set per day
+    if (workHours.toNumber() > 0) {
+      leaveHours = new Decimal(0);
+      holidayHours = new Decimal(0);
+    }
+    
     const weekendExtraHours = existingEntry.weekend_extra_hours;
     const overtimeHours = existingEntry.overtime_hours;
 
@@ -242,6 +308,8 @@ export async function updateTimesheetEntries(
       where: { id: existingEntry.id },
       data: {
         work_hours: workHours,
+        leave_hours: leaveHours,
+        holiday_hours: holidayHours,
         total_hours: totalHours,
         description: entryData.description ?? existingEntry.description,
       },

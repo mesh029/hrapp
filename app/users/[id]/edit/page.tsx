@@ -22,11 +22,14 @@ export default function EditUserPage() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [isLoadingUser, setIsLoadingUser] = React.useState(true);
   const [error, setError] = React.useState('');
+  const [successMessage, setSuccessMessage] = React.useState('');
   const [locations, setLocations] = React.useState<any[]>([]);
   const [managers, setManagers] = React.useState<any[]>([]);
   const [roles, setRoles] = React.useState<Role[]>([]);
   const [userRoles, setUserRoles] = React.useState<Role[]>([]);
   const [selectedRoleId, setSelectedRoleId] = React.useState('');
+  const [autoSaveTimeout, setAutoSaveTimeout] = React.useState<NodeJS.Timeout | null>(null);
+  const lastSavedStaffNumber = React.useRef<string>('');
 
   const [formData, setFormData] = React.useState({
     name: '',
@@ -36,6 +39,8 @@ export default function EditUserPage() {
     charge_code: '',
     primary_location_id: '',
     manager_id: '',
+    contract_start_date: '',
+    contract_end_date: '',
   });
 
   React.useEffect(() => {
@@ -45,29 +50,53 @@ export default function EditUserPage() {
       loadManagers();
       loadRoles();
     }
+    // Cleanup auto-save timeout on unmount
+    return () => {
+      if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
+    };
   }, [userId]);
 
   const loadUser = async () => {
     try {
       setIsLoadingUser(true);
       const response = await usersService.getUser(userId);
+      console.log('Load user response:', response);
       if (response.success && response.data) {
         const user = response.data;
+        console.log('User data:', user);
+        console.log('User roles:', user.user_roles);
+        const staffNum = user.staff_number || '';
         setFormData({
           name: user.name || '',
           email: user.email || '',
           status: user.status || 'active',
-          staff_number: user.staff_number || '',
+          staff_number: staffNum,
           charge_code: user.charge_code || '',
           primary_location_id: user.primary_location_id || '',
           manager_id: user.manager_id || '',
+          contract_start_date: user.contract_start_date ? String(user.contract_start_date).slice(0, 10) : '',
+          contract_end_date: user.contract_end_date ? String(user.contract_end_date).slice(0, 10) : '',
         });
-        // Load user roles
+        lastSavedStaffNumber.current = staffNum;
+        // Load user roles - ensure we get the latest roles
         if (user.user_roles && Array.isArray(user.user_roles)) {
-          setUserRoles(user.user_roles.map((ur: any) => ur.role).filter(Boolean));
+          const activeRoles = user.user_roles
+            .filter((ur: any) => ur.role && ur.role.status === 'active')
+            .map((ur: any) => ur.role);
+          console.log('Active roles from loadUser:', activeRoles);
+          console.log('Raw user_roles:', user.user_roles);
+          // Force state update with a new array reference
+          setUserRoles([...activeRoles]);
+        } else {
+          console.log('No user_roles found, setting empty array');
+          setUserRoles([]);
         }
+      } else {
+        console.error('Failed to load user:', response);
+        setError('Failed to load user data');
       }
     } catch (err: any) {
+      console.error('Error loading user:', err);
       setError(err.message || 'Failed to load user');
     } finally {
       setIsLoadingUser(false);
@@ -89,19 +118,55 @@ export default function EditUserPage() {
     if (!selectedRoleId) return;
 
     try {
+      setIsLoading(true);
+      setError('');
       const response = await api.post(`/api/users/${userId}/roles`, {
         roleId: selectedRoleId,
       });
 
+      console.log('Role assignment response:', response);
+
       if (response.success) {
-        // Reload user to get updated roles
-        await loadUser();
+        // The API returns the updated user with roles in response.data
+        const updatedUser = response.data;
+        
+        console.log('Updated user from response:', updatedUser);
+        console.log('user_roles in response:', updatedUser?.user_roles);
+        
+        // Update user roles from the response immediately
+        if (updatedUser && updatedUser.user_roles && Array.isArray(updatedUser.user_roles)) {
+          const activeRoles = updatedUser.user_roles
+            .filter((ur: any) => ur.role && ur.role.status === 'active')
+            .map((ur: any) => ur.role);
+          console.log('Setting active roles:', activeRoles);
+          console.log('Current userRoles state before update:', userRoles);
+          // Force state update with a new array reference
+          setUserRoles([...activeRoles]);
+          console.log('State updated, new userRoles should be:', activeRoles);
+        } else {
+          console.warn('No user_roles in response, reloading user');
+          // If response doesn't have roles, reload from server
+          await loadUser();
+        }
+        
         setSelectedRoleId('');
+        setSuccessMessage('Role assigned successfully!');
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => setSuccessMessage(''), 3000);
+        
+        // Also reload user to ensure everything is in sync
+        await loadUser();
       } else {
-        alert(response.message || 'Failed to assign role');
+        setError(response.message || 'Failed to assign role');
       }
     } catch (error: any) {
-      alert(error.message || 'Failed to assign role');
+      console.error('Role assignment error:', error);
+      setError(error.message || 'Failed to assign role');
+      // Even on error, try to reload user to get current state
+      await loadUser();
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -123,9 +188,18 @@ export default function EditUserPage() {
 
   const loadLocations = async () => {
     try {
-      const response = await api.get<{ success: boolean; data: any[] }>('/api/locations');
+      const response = await api.get<{ success: boolean; data: any }>('/api/locations?tree=false');
       if (response.success && response.data) {
-        setLocations(Array.isArray(response.data) ? response.data : []);
+        // Handle different response structures
+        let locationsList: any[] = [];
+        if (Array.isArray(response.data)) {
+          locationsList = response.data;
+        } else if (response.data.locations && Array.isArray(response.data.locations)) {
+          locationsList = response.data.locations;
+        } else if (response.data.flat && Array.isArray(response.data.flat)) {
+          locationsList = response.data.flat;
+        }
+        setLocations(locationsList);
       }
     } catch (error) {
       console.error('Failed to load locations:', error);
@@ -156,9 +230,13 @@ export default function EditUserPage() {
         manager_id: formData.manager_id || undefined,
         staff_number: formData.staff_number || undefined,
         charge_code: formData.charge_code || undefined,
+        contract_start_date: formData.contract_start_date || null,
+        contract_end_date: formData.contract_end_date || null,
       });
 
+      // Use router.refresh() to ensure the detail page gets updated data
       router.push(`/users/${userId}`);
+      router.refresh();
     } catch (err: any) {
       setError(err.message || 'Failed to update user');
     } finally {
@@ -238,12 +316,55 @@ export default function EditUserPage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="staff_number">Staff Number</Label>
-                    <Input
-                      id="staff_number"
-                      value={formData.staff_number}
-                      onChange={(e) => setFormData({ ...formData, staff_number: e.target.value })}
-                      disabled={isLoading}
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="staff_number"
+                        value={formData.staff_number}
+                        onChange={(e) => {
+                          const newValue = e.target.value;
+                          setFormData({ ...formData, staff_number: newValue });
+                          // Auto-save staff number after 1 second of no typing
+                          if (autoSaveTimeout) clearTimeout(autoSaveTimeout);
+                          const timeout = setTimeout(async () => {
+                            if (newValue !== lastSavedStaffNumber.current && newValue.trim() !== '') {
+                              try {
+                                await usersService.updateUser(userId, { staff_number: newValue || undefined });
+                                lastSavedStaffNumber.current = newValue;
+                              } catch (err) {
+                                console.error('Auto-save failed:', err);
+                              }
+                            }
+                          }, 1000);
+                          setAutoSaveTimeout(timeout);
+                        }}
+                        placeholder="Auto-generate or enter manually"
+                        disabled={isLoading}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={async () => {
+                          // Generate staff number: STF-YYYYMMDD-XXXX (last 4 digits of user ID)
+                          const prefix = 'STF';
+                          const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                          const suffix = userId.slice(-4).toUpperCase();
+                          const generated = `${prefix}-${date}-${suffix}`;
+                          setFormData({ ...formData, staff_number: generated });
+                          try {
+                            await usersService.updateUser(userId, { staff_number: generated });
+                            lastSavedStaffNumber.current = generated;
+                            setError('');
+                          } catch (err: any) {
+                            setError(err.message || 'Failed to generate staff number');
+                          }
+                        }}
+                        disabled={isLoading}
+                        size="sm"
+                      >
+                        Generate
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -304,6 +425,28 @@ export default function EditUserPage() {
                       <option value="active">Active</option>
                       <option value="suspended">Suspended</option>
                     </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="contract_start_date">Contract Start Date</Label>
+                    <Input
+                      id="contract_start_date"
+                      type="date"
+                      value={formData.contract_start_date}
+                      onChange={(e) => setFormData({ ...formData, contract_start_date: e.target.value })}
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="contract_end_date">Contract End Date</Label>
+                    <Input
+                      id="contract_end_date"
+                      type="date"
+                      value={formData.contract_end_date}
+                      onChange={(e) => setFormData({ ...formData, contract_end_date: e.target.value })}
+                      disabled={isLoading}
+                    />
                   </div>
                 </div>
               </div>
@@ -370,6 +513,12 @@ export default function EditUserPage() {
               {error && (
                 <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
                   {error}
+                </div>
+              )}
+
+              {successMessage && (
+                <div className="p-3 rounded-lg bg-green-100 text-green-800 text-sm">
+                  {successMessage}
                 </div>
               )}
 

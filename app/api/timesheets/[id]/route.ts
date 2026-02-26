@@ -34,8 +34,9 @@ export async function GET(
 
     const hasReadPermission = await checkPermission(user, 'timesheet.read', { locationId: locationId_hasPermission });
     const hasCreatePermission = await checkPermission(user, 'timesheet.create', { locationId: locationId_hasPermission });
+    const hasSubmitPermission = await checkPermission(user, 'timesheet.submit', { locationId: locationId_hasPermission });
     const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
-    if (!hasReadPermission && !hasCreatePermission && !isAdmin) {
+    if (!hasReadPermission && !hasCreatePermission && !hasSubmitPermission && !isAdmin) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 
@@ -103,8 +104,17 @@ export async function GET(
     }
 
     // Check if user can access this timesheet
-    if (!isAdmin && timesheet.user_id !== user.id) {
-      return errorResponse('Forbidden: You can only access your own timesheets', 403);
+    // - Admin: always
+    // - Reader/Approver: location-scoped access
+    // - Creator-only: own timesheets only
+    if (!isAdmin) {
+      if (hasReadPermission || (await checkPermission(user, 'timesheet.approve', { locationId: locationId_hasPermission }))) {
+        if (timesheet.location_id !== locationId_hasPermission && timesheet.user_id !== user.id) {
+          return errorResponse('Forbidden: You can only access timesheets within your scope', 403);
+        }
+      } else if (timesheet.user_id !== user.id) {
+        return errorResponse('Forbidden: You can only access your own timesheets', 403);
+      }
     }
 
     return successResponse(timesheet, 'Timesheet retrieved successfully');

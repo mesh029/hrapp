@@ -151,6 +151,16 @@ export const leaveService = {
   },
 
   /**
+   * Submit a leave request for approval
+   */
+  async submitLeaveRequest(id: string): Promise<{
+    success: boolean;
+    data: LeaveRequest;
+  }> {
+    return api.post(`/api/leave/requests/${id}/submit`);
+  },
+
+  /**
    * Cancel a leave request
    */
   async cancelLeaveRequest(id: string): Promise<{
@@ -178,9 +188,20 @@ export const leaveService = {
    */
   async getLeaveTypes(): Promise<{
     success: boolean;
-    data: LeaveType[];
+    data: LeaveType[] | { leaveTypes: LeaveType[]; pagination: any };
   }> {
-    return api.get('/api/leave/types');
+    const response = await api.get<{ leaveTypes: LeaveType[]; pagination: any }>('/api/leave/types');
+    // Handle nested response structure
+    if (response.success && response.data) {
+      const data = response.data as any;
+      if (data.leaveTypes) {
+        return {
+          success: true,
+          data: data.leaveTypes,
+        };
+      }
+    }
+    return response as { success: boolean; data: LeaveType[] };
   },
 
   /**

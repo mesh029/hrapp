@@ -90,6 +90,25 @@ export default function LeaveRequestDetailPage() {
     }
   };
 
+  const handleSubmit = async () => {
+    if (!request || !confirm('Are you sure you want to submit this leave request for approval?')) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const response = await leaveService.submitLeaveRequest(request.id);
+      if (response.success) {
+        await loadLeaveRequest(); // Reload to show updated status
+      }
+    } catch (error: any) {
+      console.error('Failed to submit leave request:', error);
+      alert(error.message || 'Failed to submit leave request');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleCancel = async () => {
     if (!request || !confirm('Are you sure you want to cancel this leave request?')) {
       return;
@@ -117,14 +136,33 @@ export default function LeaveRequestDetailPage() {
   };
 
   // Check if user can edit (must be Draft status and have edit permission)
+  // For Draft status, show buttons if user has any leave permission or is admin
   const { isVisible: canEdit } = useComponentVisibility('leave.edit.action', {
     fallbackPermission: 'leave.update',
-    fallbackCheck: (features) => request?.status === 'Draft' && features.canCreateLeave && !features.isAdmin,
+    fallbackCheck: (features) => {
+      if (request?.status !== 'Draft') return false;
+      // Show if user has any leave-related permission or is admin
+      return features.canCreateLeave || features.canUpdateLeave || features.canSubmitLeave || features.isAdmin || features.canViewAllLeaves;
+    },
+  });
+  
+  // Check if user can submit (must be Draft status)
+  const { isVisible: canSubmit } = useComponentVisibility('leave.submit.action', {
+    fallbackPermission: 'leave.submit',
+    fallbackCheck: (features) => {
+      if (request?.status !== 'Draft') return false;
+      // Show if user has any leave-related permission or is admin
+      return features.canCreateLeave || features.canSubmitLeave || features.canUpdateLeave || features.isAdmin || features.canViewAllLeaves;
+    },
   });
   
   const { isVisible: canCancelAction } = useComponentVisibility('leave.cancel.action', {
     fallbackPermission: 'leave.update',
-    fallbackCheck: (features) => request?.status === 'Draft' && features.canCreateLeave && !features.isAdmin,
+    fallbackCheck: (features) => {
+      if (request?.status !== 'Draft') return false;
+      // Show if user has any leave-related permission or is admin
+      return features.canCreateLeave || features.canUpdateLeave || features.canSubmitLeave || features.isAdmin || features.canViewAllLeaves;
+    },
   });
   
   const { isVisible: canApproveAction } = useComponentVisibility('leave.approve.action', {
@@ -135,6 +173,7 @@ export default function LeaveRequestDetailPage() {
   const canCancel = canCancelAction;
   const canApprove = canApproveAction;
   const workflowInstanceId = workflowTimeline?.workflow_instance_id;
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const openAction = (mode: 'approve' | 'decline' | 'reroute') => {
     setActionMode(mode);
@@ -354,57 +393,72 @@ export default function LeaveRequestDetailPage() {
         </div>
 
         {/* Actions */}
-        {(canEdit || canCancel || canApprove) && (
+        {request.status === 'Draft' && (
           <Card>
             <CardHeader>
               <CardTitle>Actions</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-4">
-                {canEdit && (
-                  <Button
-                    variant="outline"
-                    onClick={() => router.push(`/leave/requests/${request.id}/edit`)}
-                  >
-                    Edit Request
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/leave/requests/${request.id}/edit`)}
+                >
+                  Edit Request
+                </Button>
                 
-                {canCancel && (
+                <Button
+                  variant="default"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Submitting...' : 'Submit for Approval'}
+                </Button>
+                
+                <Button
+                  variant="destructive"
+                  onClick={handleCancel}
+                  disabled={isCancelling}
+                >
+                  {isCancelling ? 'Cancelling...' : 'Cancel Request'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
+        {/* Approval Actions */}
+        {canApprove && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Approval Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-4">
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="default"
+                    onClick={() => openAction('approve')}
+                    disabled={!workflowInstanceId}
+                  >
+                    Approve
+                  </Button>
                   <Button
                     variant="destructive"
-                    onClick={handleCancel}
-                    disabled={isCancelling}
+                    onClick={() => openAction('decline')}
+                    disabled={!workflowInstanceId}
                   >
-                    {isCancelling ? 'Cancelling...' : 'Cancel Request'}
+                    Final Decline
                   </Button>
-                )}
-
-                {canApprove && (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="default"
-                      onClick={() => openAction('approve')}
-                      disabled={!workflowInstanceId}
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={() => openAction('decline')}
-                      disabled={!workflowInstanceId}
-                    >
-                      Final Decline
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => openAction('reroute')}
-                      disabled={!workflowInstanceId || !workflowTimeline?.timeline?.length}
-                    >
-                      Decline & Route Back
-                    </Button>
-                  </div>
-                )}
+                  <Button
+                    variant="outline"
+                    onClick={() => openAction('reroute')}
+                    disabled={!workflowInstanceId || !workflowTimeline?.timeline?.length}
+                  >
+                    Decline & Route Back
+                  </Button>
+                </div>
               </div>
               {canApprove && actionMode && (
                 <div className="mt-4 border-t pt-4 space-y-3">

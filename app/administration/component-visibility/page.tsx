@@ -30,6 +30,8 @@ const KNOWN_COMPONENTS = [
   { id: 'dashboard.actions.create-leave', name: 'Create Leave Request Button', module: 'Dashboard' },
   { id: 'dashboard.actions.approve-leave', name: 'Approve Leave Requests Button', module: 'Dashboard' },
   { id: 'dashboard.actions.create-timesheet', name: 'Create Timesheet Button', module: 'Dashboard' },
+  { id: 'dashboard.actions.view-my-timesheets', name: 'View My Timesheets Button', module: 'Dashboard' },
+  { id: 'dashboard.actions.view-my-leave', name: 'View My Leave Requests Button', module: 'Dashboard' },
   { id: 'dashboard.actions.approve-timesheets', name: 'Approve Timesheets Button', module: 'Dashboard' },
   { id: 'dashboard.actions.view-reports', name: 'View Reports Button', module: 'Dashboard' },
   { id: 'dashboard.overview.system', name: 'System Overview Section', module: 'Dashboard' },
@@ -37,6 +39,10 @@ const KNOWN_COMPONENTS = [
   { id: 'dashboard.overview.team', name: 'Team Overview Section', module: 'Dashboard' },
   { id: 'dashboard.overview.personal', name: 'Personal Overview Section', module: 'Dashboard' },
   { id: 'dashboard.quick-links', name: 'Quick Links Section', module: 'Dashboard' },
+  { id: 'dashboard.quick-links.manage-users', name: 'Quick Link: Manage Users', module: 'Dashboard' },
+  { id: 'dashboard.quick-links.leave', name: 'Quick Link: Leave Requests', module: 'Dashboard' },
+  { id: 'dashboard.quick-links.timesheets', name: 'Quick Link: Timesheets', module: 'Dashboard' },
+  { id: 'dashboard.quick-links.reports', name: 'Quick Link: Reports', module: 'Dashboard' },
   
   // Navigation Components
   { id: 'nav.dashboard', name: 'Dashboard Link', module: 'Navigation' },

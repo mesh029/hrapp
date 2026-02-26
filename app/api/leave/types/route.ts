@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
-import { requirePermission } from '@/lib/middleware/permissions';
+import { checkPermission } from '@/lib/middleware/permissions';
 import { prisma } from '@/lib/db';
-import { successResponse, errorResponse, unauthorizedResponse } from '@/lib/utils/responses';
+import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse } from '@/lib/utils/responses';
 import { createLeaveTypeSchema, paginationSchema } from '@/lib/utils/validation';
 
 /**
@@ -25,29 +25,15 @@ export async function GET(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    try {
-      await requirePermission(user, 'leave.types.read', { locationId });
-    } catch {
-      const hasSystemAdmin = await prisma.userRole.findFirst({
-        where: {
-          user_id: user.id,
-          deleted_at: null,
-          role: {
-            status: 'active',
-            role_permissions: {
-              some: {
-                permission: {
-                  name: 'system.admin',
-                },
-              },
-            },
-          },
-        },
-      });
+    // Allow users with leave.create, leave.types.read, or system.admin to view leave types
+    // (Users need to see leave types to create leave requests)
+    const hasTypesRead = await checkPermission(user, 'leave.types.read', { locationId });
+    const hasCreate = await checkPermission(user, 'leave.create', { locationId });
+    const hasSubmit = await checkPermission(user, 'leave.submit', { locationId });
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId });
 
-      if (!hasSystemAdmin) {
-        return unauthorizedResponse('You do not have permission to view leave types');
-      }
+    if (!hasTypesRead && !hasCreate && !hasSubmit && !isAdmin) {
+      return forbiddenResponse('You do not have permission to view leave types');
     }
 
     // Parse query parameters
@@ -135,29 +121,11 @@ export async function POST(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    try {
-      await requirePermission(user, 'leave.types.create', { locationId });
-    } catch {
-      const hasSystemAdmin = await prisma.userRole.findFirst({
-        where: {
-          user_id: user.id,
-          deleted_at: null,
-          role: {
-            status: 'active',
-            role_permissions: {
-              some: {
-                permission: {
-                  name: 'system.admin',
-                },
-              },
-            },
-          },
-        },
-      });
+    const hasCreatePermission = await checkPermission(user, 'leave.types.create', { locationId });
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId });
 
-      if (!hasSystemAdmin) {
-        return unauthorizedResponse('You do not have permission to create leave types');
-      }
+    if (!hasCreatePermission && !isAdmin) {
+      return forbiddenResponse('You do not have permission to create leave types');
     }
 
     const body = await request.json();

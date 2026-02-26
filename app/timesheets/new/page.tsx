@@ -160,13 +160,18 @@ export default function CreateTimesheetPage() {
 
               {/* Days Calculation */}
               {formData.period_start && formData.period_end && (
-                <div className="p-3 bg-muted rounded-md">
+                <div className="p-3 bg-muted rounded-md space-y-2">
                   <p className="text-sm">
                     <span className="font-medium">Period Duration:</span> {calculateDays()} day(s)
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-xs text-muted-foreground">
                     A timesheet entry will be created for each day in this period
                   </p>
+                  <div className="p-2 bg-blue-50 dark:bg-blue-950/20 rounded border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">
+                      📝 After creating the timesheet, you'll be able to enter work hours for each day
+                    </p>
+                  </div>
                 </div>
               )}
 

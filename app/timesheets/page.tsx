@@ -42,7 +42,8 @@ export default function TimesheetsPage() {
 
   const { isVisible: canView } = useComponentVisibility(COMPONENT_ID_LIST, {
     fallbackPermission: 'timesheet.read',
-    fallbackCheck: (features) => features.canViewAllTimesheets || features.canCreateTimesheet,
+    fallbackCheck: (features) =>
+      features.canViewAllTimesheets || features.canCreateTimesheet || features.canSubmitTimesheet,
   });
 
   const { isVisible: showCreateButton } = useComponentVisibility(COMPONENT_ID_CREATE_BUTTON, {

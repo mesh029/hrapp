@@ -15,8 +15,20 @@ const createUserSchema = z.object({
   status: z.enum(['active', 'suspended', 'deactivated']).optional().default('active'),
   staff_number: z.string().optional().nullable(), // Optional unique staff number
   charge_code: z.string().optional().nullable(), // Optional charge code
+  contract_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  contract_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
   roleIds: z.array(z.string().uuid()).optional(), // Optional role IDs to assign
 });
+
+function resolveContractStatus(contractStartDate?: Date | null, contractEndDate?: Date | null): string {
+  if (!contractStartDate) return 'unknown';
+  if (!contractEndDate) return 'active';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(contractEndDate);
+  end.setHours(0, 0, 0, 0);
+  return end < today ? 'expired' : 'active';
+}
 
 /**
  * GET /api/users
@@ -80,6 +92,9 @@ export async function GET(request: NextRequest) {
           manager_id: true,
           staff_number: true,
           charge_code: true,
+          contract_start_date: true,
+          contract_end_date: true,
+          contract_status: true,
           staff_type_id: true,
           staff_type: {
             select: {
@@ -154,7 +169,26 @@ export async function POST(request: NextRequest) {
       return errorResponse('Validation failed', 400, validationResult.error.flatten().fieldErrors);
     }
 
-    const { name, email, password, primary_location_id, manager_id, status, staff_number, charge_code, roleIds } = validationResult.data;
+    const {
+      name,
+      email,
+      password,
+      primary_location_id,
+      manager_id,
+      status,
+      staff_number,
+      charge_code,
+      contract_start_date,
+      contract_end_date,
+      roleIds,
+    } = validationResult.data;
+
+    const contractStartDate = contract_start_date ? new Date(contract_start_date) : null;
+    const contractEndDate = contract_end_date ? new Date(contract_end_date) : null;
+    if (contractStartDate && contractEndDate && contractEndDate < contractStartDate) {
+      return errorResponse('contract_end_date must be on or after contract_start_date', 400);
+    }
+    const contractStatus = resolveContractStatus(contractStartDate, contractEndDate);
 
     // Check if email already exists
     const existingEmail = await prisma.user.findUnique({
@@ -206,6 +240,9 @@ export async function POST(request: NextRequest) {
         manager_id: manager_id || null,
         staff_number: staff_number || null,
         charge_code: charge_code || null,
+        contract_start_date: contractStartDate,
+        contract_end_date: contractEndDate,
+        contract_status: contractStatus,
       },
       select: {
         id: true,
@@ -216,6 +253,9 @@ export async function POST(request: NextRequest) {
         manager_id: true,
         staff_number: true,
         charge_code: true,
+        contract_start_date: true,
+        contract_end_date: true,
+        contract_status: true,
         manager: {
           select: {
             id: true,

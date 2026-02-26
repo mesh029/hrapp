@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { checkPermission } from '@/lib/middleware/permissions';
-import { validateTimesheet } from '@/lib/services/timesheet-validation';
+import { canSubmitTimesheet } from '@/lib/services/timesheet-validation';
 import { uuidSchema } from '@/lib/utils/validation';
 import { successResponse, errorResponse } from '@/lib/utils/responses';
 
@@ -35,16 +35,21 @@ export async function GET(
 
     const hasReadPermission = await checkPermission(user, 'timesheet.read', { locationId: locationId_hasPermission });
     const hasCreatePermission = await checkPermission(user, 'timesheet.create', { locationId: locationId_hasPermission });
+    const hasSubmitPermission = await checkPermission(user, 'timesheet.submit', { locationId: locationId_hasPermission });
     const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
-    if (!hasReadPermission && !hasCreatePermission && !isAdmin) {
+    if (!hasReadPermission && !hasCreatePermission && !hasSubmitPermission && !isAdmin) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 
     uuidSchema.parse(params.id);
 
-    const validation = await validateTimesheet(params.id);
+    // Use canSubmitTimesheet to get both validation and canSubmit status
+    const { canSubmit, validation } = await canSubmitTimesheet(params.id);
 
-    return successResponse(validation, 'Timesheet validation completed');
+    return successResponse({
+      canSubmit,
+      validation,
+    }, 'Timesheet validation completed');
   } catch (error: any) {
     if (error.name === 'ZodError') {
       return errorResponse('Validation error: ' + error.errors[0].message, 400);

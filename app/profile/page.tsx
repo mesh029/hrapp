@@ -77,13 +77,17 @@ export default function ProfilePage() {
         // API returns user data directly in response.data
         const userData = response.data;
         
-        // Transform user_roles to roles format
-        const transformedData: UserProfile = {
-          ...userData,
-          roles: userData.user_roles?.map((ur: any) => ({
+        // Transform user_roles to roles format - filter active roles only
+        const activeRoles = (userData.user_roles || [])
+          .filter((ur: any) => ur.role && ur.role.status === 'active')
+          .map((ur: any) => ({
             id: ur.role.id,
             name: ur.role.name,
-          })).filter((r: any) => r && userData.user_roles?.find((ur: any) => ur.role.id === r.id)?.role.status === 'active') || [],
+          }));
+        
+        const transformedData: UserProfile = {
+          ...userData,
+          roles: activeRoles,
         };
         
         setProfile(transformedData);

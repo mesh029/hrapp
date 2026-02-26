@@ -16,7 +16,19 @@ const updateUserSchema = z.object({
   manager_id: z.string().uuid().nullable().optional(), // Optional manager assignment
   staff_number: z.string().nullable().optional(), // Optional unique staff number
   charge_code: z.string().nullable().optional(), // Optional charge code
+  contract_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  contract_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 });
+
+function resolveContractStatus(contractStartDate?: Date | null, contractEndDate?: Date | null): string {
+  if (!contractStartDate) return 'unknown';
+  if (!contractEndDate) return 'active';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(contractEndDate);
+  end.setHours(0, 0, 0, 0);
+  return end < today ? 'expired' : 'active';
+}
 
 /**
  * GET /api/users/[id]
@@ -66,6 +78,9 @@ export async function GET(
         deleted_at: true,
         staff_number: true,
         charge_code: true,
+        contract_start_date: true,
+        contract_end_date: true,
+        contract_status: true,
         primary_location: {
           select: {
             id: true,
@@ -211,6 +226,29 @@ export async function PATCH(
     if (validation.data.charge_code !== undefined) {
       updateData.charge_code = validation.data.charge_code;
     }
+    if (validation.data.contract_start_date !== undefined) {
+      updateData.contract_start_date = validation.data.contract_start_date
+        ? new Date(validation.data.contract_start_date)
+        : null;
+    }
+    if (validation.data.contract_end_date !== undefined) {
+      updateData.contract_end_date = validation.data.contract_end_date
+        ? new Date(validation.data.contract_end_date)
+        : null;
+    }
+
+    const effectiveContractStart = updateData.contract_start_date !== undefined
+      ? updateData.contract_start_date
+      : existing.contract_start_date;
+    const effectiveContractEnd = updateData.contract_end_date !== undefined
+      ? updateData.contract_end_date
+      : existing.contract_end_date;
+    if (effectiveContractStart && effectiveContractEnd && effectiveContractEnd < effectiveContractStart) {
+      return errorResponse('contract_end_date must be on or after contract_start_date', 400);
+    }
+    if (validation.data.contract_start_date !== undefined || validation.data.contract_end_date !== undefined) {
+      updateData.contract_status = resolveContractStatus(effectiveContractStart, effectiveContractEnd);
+    }
 
     // Validate manager if provided
     if (validation.data.manager_id !== undefined) {
@@ -253,6 +291,9 @@ export async function PATCH(
         manager_id: true,
         staff_number: true,
         charge_code: true,
+        contract_start_date: true,
+        contract_end_date: true,
+        contract_status: true,
         manager: {
           select: {
             id: true,

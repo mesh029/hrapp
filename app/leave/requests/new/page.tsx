@@ -57,13 +57,21 @@ export default function CreateLeaveRequestPage() {
       setIsLoading(true);
       const response = await leaveService.getLeaveTypes();
       if (response.success && response.data) {
+        // Response.data is now always an array after service transformation
+        const types = Array.isArray(response.data) ? response.data : [];
         // Filter to only active leave types
-        const activeTypes = response.data.filter(lt => lt.status === 'active');
+        const activeTypes = types.filter((lt: any) => lt.status === 'active');
         setLeaveTypes(activeTypes);
+        if (activeTypes.length === 0) {
+          setError('No active leave types available');
+        }
+      } else {
+        console.error('Failed to load leave types:', response);
+        setError(response.message || 'Failed to load leave types');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load leave types:', error);
-      setError('Failed to load leave types');
+      setError(error.message || 'Failed to load leave types');
     } finally {
       setIsLoading(false);
     }
@@ -154,14 +162,18 @@ export default function CreateLeaveRequestPage() {
                   onChange={(e) => setFormData(prev => ({ ...prev, leave_type_id: e.target.value }))}
                   className="w-full px-3 py-2 border rounded-md"
                   required
+                  disabled={isLoading || leaveTypes.length === 0}
                 >
-                  <option value="">Select leave type</option>
+                  <option value="">{isLoading ? 'Loading leave types...' : leaveTypes.length === 0 ? 'No leave types available' : 'Select leave type'}</option>
                   {leaveTypes.map((type) => (
                     <option key={type.id} value={type.id}>
                       {type.name} ({type.max_days_per_year} days/year)
                     </option>
                   ))}
                 </select>
+                {error && error.includes('leave types') && (
+                  <p className="text-sm text-destructive mt-1">{error}</p>
+                )}
               </div>
 
               {/* Date Range */}

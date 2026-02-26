@@ -142,6 +142,13 @@ export async function getLeaveUtilization(filters: LeaveUtilizationFilters = {})
   return {
     summary: {
       totalRequests: filteredRequests.length,
+      approvedRequests: filteredRequests.filter(
+        (lr) => lr.status === 'Approved' || lr.status === 'Submitted'
+      ).length,
+      pendingRequests: filteredRequests.filter(
+        (lr) => lr.status === 'UnderReview' || lr.status === 'Draft'
+      ).length,
+      declinedRequests: filteredRequests.filter((lr) => lr.status === 'Declined').length,
       totalDays: filteredRequests.reduce((sum, lr) => sum + lr.days_requested.toNumber(), 0),
       approvedDays: filteredRequests
         .filter((lr) => lr.status === 'Approved' || lr.status === 'Submitted')
@@ -149,9 +156,77 @@ export async function getLeaveUtilization(filters: LeaveUtilizationFilters = {})
       pendingDays: filteredRequests
         .filter((lr) => lr.status === 'UnderReview' || lr.status === 'Draft')
         .reduce((sum, lr) => sum + lr.days_requested.toNumber(), 0),
+      declinedDays: filteredRequests
+        .filter((lr) => lr.status === 'Declined')
+        .reduce((sum, lr) => sum + lr.days_requested.toNumber(), 0),
     },
     utilization: Object.values(utilization),
     filters,
+  };
+}
+
+async function getContractInsights(filters: DashboardFilters = {}) {
+  const { locationId, staffTypeId, userId } = filters;
+  const now = new Date();
+  const in30Days = new Date(now);
+  in30Days.setDate(in30Days.getDate() + 30);
+
+  const userWhere: Prisma.UserWhereInput = {
+    deleted_at: null,
+    status: { in: ['active', 'suspended'] },
+  };
+  if (userId) userWhere.id = userId;
+  if (locationId) userWhere.primary_location_id = locationId;
+  if (staffTypeId) userWhere.staff_type_id = staffTypeId;
+
+  const users = await prisma.user.findMany({
+    where: userWhere,
+    select: {
+      id: true,
+      contract_start_date: true,
+      contract_end_date: true,
+      contract_status: true,
+    },
+  });
+
+  const userIds = users.map((u) => u.id);
+  if (userIds.length === 0) {
+    return {
+      totalWithContracts: 0,
+      expiringIn30Days: 0,
+      expiredContracts: 0,
+      utilizedDaysForExpiredUsers: 0,
+      availableDaysForExpiredUsers: 0,
+    };
+  }
+
+  const expiredUserIds = users
+    .filter((u) => u.contract_end_date && u.contract_end_date < now)
+    .map((u) => u.id);
+
+  const expiringIn30Days = users.filter(
+    (u) => u.contract_end_date && u.contract_end_date >= now && u.contract_end_date <= in30Days
+  ).length;
+
+  const expiredBalances = expiredUserIds.length
+    ? await prisma.leaveBalance.findMany({
+        where: { user_id: { in: expiredUserIds } },
+        select: { allocated: true, used: true, pending: true },
+      })
+    : [];
+
+  const utilizedDaysForExpiredUsers = expiredBalances.reduce((sum, b) => sum + b.used.toNumber(), 0);
+  const availableDaysForExpiredUsers = expiredBalances.reduce(
+    (sum, b) => sum + (b.allocated.toNumber() - b.used.toNumber() - b.pending.toNumber()),
+    0
+  );
+
+  return {
+    totalWithContracts: users.filter((u) => !!u.contract_start_date).length,
+    expiringIn30Days,
+    expiredContracts: expiredUserIds.length,
+    utilizedDaysForExpiredUsers,
+    availableDaysForExpiredUsers,
   };
 }
 
@@ -493,7 +568,7 @@ export async function getPendingApprovals(filters: DashboardFilters = {}) {
  * Get dashboard data (aggregated metrics)
  */
 export async function getDashboardData(filters: DashboardFilters = {}) {
-  const cacheKey = `dashboard:${JSON.stringify(filters)}`;
+  const cacheKey = `dashboard:v2:${JSON.stringify(filters)}`;
   
   // Try to get from cache first
   const cached = await redis.get(cacheKey);
@@ -503,18 +578,13 @@ export async function getDashboardData(filters: DashboardFilters = {}) {
 
   const { locationId, staffTypeId, userId, startDate, endDate } = filters;
 
-  // Get date range (default to current month)
-  const now = new Date();
-  const defaultStartDate = startDate || new Date(now.getFullYear(), now.getMonth(), 1);
-  const defaultEndDate = endDate || new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
   // Get leave utilization (filter by userId if provided)
   const leaveUtilization = await getLeaveUtilization({
     locationId,
     staffTypeId,
     userId, // Pass userId for employee-specific filtering
-    startDate: defaultStartDate,
-    endDate: defaultEndDate,
+    startDate,
+    endDate,
   });
 
   // Get leave balances (filter by userId if provided)
@@ -529,22 +599,28 @@ export async function getDashboardData(filters: DashboardFilters = {}) {
     locationId,
     staffTypeId,
     userId, // Pass userId for employee-specific filtering
-    startDate: defaultStartDate,
-    endDate: defaultEndDate,
+    startDate,
+    endDate,
   });
 
   // Get pending approvals (filter by userId if provided for employee view)
   const pendingApprovals = await getPendingApprovals({
     locationId,
     userId, // Pass userId for employee-specific filtering
-    startDate: defaultStartDate,
-    endDate: defaultEndDate,
+    startDate,
+    endDate,
+  });
+
+  const contracts = await getContractInsights({
+    locationId,
+    staffTypeId,
+    userId,
   });
 
   const dashboardData = {
     period: {
-      startDate: defaultStartDate,
-      endDate: defaultEndDate,
+      startDate: startDate || null,
+      endDate: endDate || null,
     },
     leave: {
       utilization: leaveUtilization.summary,
@@ -552,6 +628,7 @@ export async function getDashboardData(filters: DashboardFilters = {}) {
     },
     timesheets: timesheetSummary.summary,
     approvals: pendingApprovals.summary,
+    contracts,
     filters,
   };
 

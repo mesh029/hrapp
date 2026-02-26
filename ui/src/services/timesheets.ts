@@ -36,6 +36,19 @@ export interface TimesheetEntry {
   weekend_extra_hours: number;
   overtime_hours: number;
   notes?: string;
+  is_auto_added?: boolean;
+  leave_request_id?: string | null;
+  holiday_id?: string | null;
+  leave_request?: {
+    id: string;
+    leave_type: {
+      name: string;
+    };
+  } | null;
+  holiday?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 export interface CreateTimesheetData {
@@ -163,7 +176,17 @@ export const timesheetService = {
     data: {
       canSubmit: boolean;
       validation: {
-        valid: boolean;
+        status: 'valid' | 'warning' | 'error';
+        expectedHours: number;
+        actualHours: number;
+        discrepancy: number;
+        dailyIssues: Array<{
+          date: string;
+          expected: number;
+          actual: number;
+          discrepancy: number;
+          issue: string;
+        }>;
         notes: string[];
       };
     };

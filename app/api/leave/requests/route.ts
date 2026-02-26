@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
 import { checkPermission, requirePermission } from '@/lib/middleware/permissions';
 import { prisma } from '@/lib/db';
-import { successResponse, errorResponse, unauthorizedResponse } from '@/lib/utils/responses';
+import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse } from '@/lib/utils/responses';
 import { createLeaveRequestSchema, paginationSchema } from '@/lib/utils/validation';
 import { validateLeaveRequest } from '@/lib/services/leave-validation';
 import { calculateDaysBetween, addPendingDays } from '@/lib/services/leave-balance';
@@ -31,9 +31,13 @@ export async function GET(request: NextRequest) {
 
     const hasLeaveRead = await checkPermission(user, 'leave.read', { locationId });
     const hasLeaveCreate = await checkPermission(user, 'leave.create', { locationId });
+    const hasLeaveSubmit = await checkPermission(user, 'leave.submit', { locationId });
+    const hasLeaveApprove = await checkPermission(user, 'leave.approve', { locationId });
     const isAdmin = await checkPermission(user, 'system.admin', { locationId });
-    if (!hasLeaveRead && !hasLeaveCreate && !isAdmin) {
-      return unauthorizedResponse('You do not have permission to view leave requests');
+    
+    // Allow users with create, submit, read, approve permissions, or admins
+    if (!hasLeaveRead && !hasLeaveCreate && !hasLeaveSubmit && !hasLeaveApprove && !isAdmin) {
+      return forbiddenResponse('You do not have permission to view leave requests');
     }
 
     // Parse query parameters
@@ -56,10 +60,13 @@ export async function GET(request: NextRequest) {
       where.status = status;
     }
 
-    if (!hasLeaveRead && !isAdmin) {
-      // Users with create-only access can only view their own leave requests.
+    // Non-approvers (create-only, submit-only, read-only without approve) see only their own
+    // Approvers and admins can see location-scoped/all leave requests
+    if (!hasLeaveApprove && !isAdmin) {
+      // Users without approve permission can only view their own leave requests
       where.user_id = user.id;
     } else if (user_id) {
+      // Approvers/admins can filter by user_id if provided
       where.user_id = user_id;
     }
 

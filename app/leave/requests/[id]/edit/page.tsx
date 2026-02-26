@@ -82,7 +82,9 @@ export default function EditLeaveRequestPage() {
       }
 
       if (typesResponse.success && typesResponse.data) {
-        const activeTypes = typesResponse.data.filter(lt => lt.status === 'active');
+        // Handle nested response structure: response.data.leaveTypes or direct array
+        const types = (typesResponse.data as any)?.leaveTypes || typesResponse.data;
+        const activeTypes = Array.isArray(types) ? types.filter((lt: any) => lt.status === 'active') : [];
         setLeaveTypes(activeTypes);
       }
     } catch (error) {

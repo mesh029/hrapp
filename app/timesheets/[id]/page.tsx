@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRouter, useParams } from 'next/navigation';
 import { timesheetService, Timesheet } from '@/ui/src/services/timesheets';
+import { workflowService } from '@/ui/src/services/workflows';
 import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
 import { usePermissions } from '@/ui/src/hooks/use-permissions';
@@ -40,14 +41,34 @@ export default function TimesheetDetailPage() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [validationResult, setValidationResult] = React.useState<{
     canSubmit: boolean;
-    validation: { valid: boolean; notes: string[] };
+    validation: {
+      status: 'valid' | 'warning' | 'error';
+      expectedHours: number;
+      actualHours: number;
+      discrepancy: number;
+      dailyIssues: Array<{
+        date: string;
+        expected: number;
+        actual: number;
+        discrepancy: number;
+        issue: string;
+      }>;
+      notes: string[];
+    };
   } | null>(null);
   const [workflowTimeline, setWorkflowTimeline] = React.useState<{
     has_workflow: boolean;
+    workflow_instance_id?: string;
     workflow_status?: string;
+    current_step_order?: number;
     template?: { id: string; name: string; resource_type: string };
     timeline: TimelineStep[];
   } | null>(null);
+  const [actionMode, setActionMode] = React.useState<'approve' | 'decline' | 'reroute' | null>(null);
+  const [actionComment, setActionComment] = React.useState('');
+  const [routeToStep, setRouteToStep] = React.useState<string>('');
+  const [isActioning, setIsActioning] = React.useState(false);
+  const [actionError, setActionError] = React.useState<string | null>(null);
 
   const timesheetId = params.id as string;
 
@@ -56,14 +77,50 @@ export default function TimesheetDetailPage() {
     fallbackCheck: (features) => features.canViewAllTimesheets || features.canCreateTimesheet,
   });
 
-  const { isVisible: canEdit } = useComponentVisibility(COMPONENT_ID_EDIT_ACTION, {
+  // Always show edit button for Draft timesheets if user has any timesheet permissions
+  const { isVisible: canEdit, isLoading: canEditLoading } = useComponentVisibility(COMPONENT_ID_EDIT_ACTION, {
     fallbackPermission: 'timesheet.update',
-    fallbackCheck: (features) => timesheet?.status === 'Draft' && features.canCreateTimesheet && !features.isAdmin,
+    fallbackCheck: (features) => {
+      // Show edit button if timesheet is Draft and user has any timesheet permission
+      if (timesheet?.status !== 'Draft') {
+        console.log('[Timesheet] Edit button hidden: timesheet status is', timesheet?.status);
+        return false;
+      }
+      const hasPermission = features.canCreateTimesheet || features.canUpdateTimesheet || features.canSubmitTimesheet || features.isAdmin || features.canViewAllTimesheets;
+      console.log('[Timesheet] Edit button visibility:', { 
+        status: timesheet?.status, 
+        hasPermission, 
+        canCreate: features.canCreateTimesheet,
+        canUpdate: features.canUpdateTimesheet,
+        canSubmit: features.canSubmitTimesheet,
+        isAdmin: features.isAdmin
+      });
+      return hasPermission;
+    },
+    defaultVisible: false,
   });
 
-  const { isVisible: canSubmit } = useComponentVisibility(COMPONENT_ID_SUBMIT_ACTION, {
+  // Always show submit button for Draft timesheets if user has any timesheet permissions
+  const { isVisible: canSubmit, isLoading: canSubmitLoading } = useComponentVisibility(COMPONENT_ID_SUBMIT_ACTION, {
     fallbackPermission: 'timesheet.submit',
-    fallbackCheck: (features) => timesheet?.status === 'Draft' && features.canCreateTimesheet && !features.isAdmin,
+    fallbackCheck: (features) => {
+      // Show submit button if timesheet is Draft and user has any timesheet permission
+      if (timesheet?.status !== 'Draft') {
+        console.log('[Timesheet] Submit button hidden: timesheet status is', timesheet?.status);
+        return false;
+      }
+      const hasPermission = features.canCreateTimesheet || features.canSubmitTimesheet || features.canUpdateTimesheet || features.isAdmin || features.canViewAllTimesheets;
+      console.log('[Timesheet] Submit button visibility:', { 
+        status: timesheet?.status, 
+        hasPermission, 
+        canCreate: features.canCreateTimesheet,
+        canSubmit: features.canSubmitTimesheet,
+        canUpdate: features.canUpdateTimesheet,
+        isAdmin: features.isAdmin
+      });
+      return hasPermission;
+    },
+    defaultVisible: false,
   });
 
   const { isVisible: canRequestWeekendExtra } = useComponentVisibility(COMPONENT_ID_WEEKEND_EXTRA_BUTTON, {
@@ -76,8 +133,15 @@ export default function TimesheetDetailPage() {
     fallbackCheck: (features) => timesheet?.status === 'Draft' && features.canCreateTimesheet && !features.isAdmin,
   });
 
+  const { isVisible: canApproveAction } = useComponentVisibility('timesheet.approve.action', {
+    fallbackPermission: 'timesheet.approve',
+    fallbackCheck: (features) => timesheet?.status === 'UnderReview' && features.canApproveTimesheet,
+  });
+
   // Check if user can delete (admin only)
   const canDelete = features.isAdmin || hasPermission('timesheet.delete') || hasPermission('system.admin');
+  const workflowInstanceId = workflowTimeline?.workflow_instance_id;
+  const canApprove = canApproveAction;
 
   React.useEffect(() => {
     if (timesheetId && canView) {
@@ -176,6 +240,62 @@ export default function TimesheetDetailPage() {
       alert(error.message || 'Failed to delete timesheet');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openAction = (mode: 'approve' | 'decline' | 'reroute') => {
+    setActionMode(mode);
+    setActionComment('');
+    setRouteToStep(
+      workflowTimeline?.current_step_order
+        ? String(workflowTimeline.current_step_order)
+        : ''
+    );
+    setActionError(null);
+  };
+
+  const closeAction = () => {
+    setActionMode(null);
+    setActionComment('');
+    setRouteToStep('');
+    setActionError(null);
+  };
+
+  const handleWorkflowAction = async () => {
+    if (!workflowInstanceId || !actionMode) {
+      setActionError('Workflow instance is not available for this timesheet.');
+      return;
+    }
+
+    if ((actionMode === 'decline' || actionMode === 'reroute') && !actionComment.trim()) {
+      setActionError('Comment is required for decline/reroute actions.');
+      return;
+    }
+
+    try {
+      setIsActioning(true);
+      setActionError(null);
+
+      if (actionMode === 'approve') {
+        await workflowService.approveInstance(workflowInstanceId, actionComment.trim() || undefined);
+      } else if (actionMode === 'decline') {
+        await workflowService.declineInstance(workflowInstanceId, actionComment.trim());
+      } else {
+        const step = Number(routeToStep);
+        if (!Number.isInteger(step) || step < 1) {
+          setActionError('Select a valid step to route back to.');
+          return;
+        }
+        await workflowService.routeBackInstance(workflowInstanceId, actionComment.trim(), step);
+      }
+
+      closeAction();
+      await loadTimesheet();
+    } catch (error: any) {
+      console.error('Workflow action failed:', error);
+      setActionError(error.message || 'Failed to perform workflow action');
+    } finally {
+      setIsActioning(false);
     }
   };
 
@@ -408,45 +528,66 @@ export default function TimesheetDetailPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {validationResult.canSubmit ? (
-                    <div className="p-3 rounded-md bg-green-500/10 text-green-700 text-sm">
-                      ✓ Timesheet is ready to submit
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="p-3 rounded-md bg-red-500/10 text-red-700 text-sm">
-                        ✗ Timesheet cannot be submitted
+                  <div className="space-y-2">
+                    {/* Status message */}
+                    {validationResult.canSubmit ? (
+                      <div className="p-3 rounded-md bg-green-500/10 text-green-700 text-sm">
+                        ✓ Timesheet is ready to submit
+                        {validationResult.validation?.status === 'warning' && validationResult.validation.dailyIssues && validationResult.validation.dailyIssues.length > 0 && (
+                          <span className="ml-2 text-yellow-600">(Has {validationResult.validation.dailyIssues.length} warning(s))</span>
+                        )}
                       </div>
-                      {validationResult.validation?.notes && validationResult.validation.notes.length > 0 && (
-                        <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                          {validationResult.validation.notes.map((note, idx) => (
-                            <li key={idx}>{note}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
+                    ) : (
+                      <div className="p-3 rounded-md bg-red-500/10 text-red-700 text-sm">
+                        ✗ Timesheet cannot be submitted - Critical issues found
+                      </div>
+                    )}
+                    
+                    {/* Validation notes - clear and concise */}
+                    {validationResult.validation?.notes && validationResult.validation.notes.length > 0 && (
+                      <div className="space-y-2 mt-3">
+                        {validationResult.validation.notes.map((note, idx) => {
+                          const isCritical = note.includes('❌');
+                          const isWarning = note.includes('⚠️');
+                          const isInfo = note.includes('Total:');
+                          return (
+                            <div key={idx} className={`text-sm ${
+                              isCritical
+                                ? 'text-red-700 font-medium'
+                                : isWarning
+                                ? 'text-yellow-700'
+                                : isInfo
+                                ? 'text-muted-foreground'
+                                : 'text-muted-foreground'
+                            }`}>
+                              {note}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    
+                  </div>
                 </CardContent>
               </Card>
             )}
 
-            {/* Actions */}
-            {(canEdit || canSubmit || canRequestWeekendExtra || canRequestOvertime || canDelete) && (
+            {/* Actions - Always show for Draft timesheets */}
+            {timesheet?.status === 'Draft' && (
               <Card>
                 <CardHeader>
                   <CardTitle>Actions</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-col gap-3">
-                    {canEdit && (
-                      <Button
-                        variant="outline"
-                        onClick={() => router.push(`/timesheets/${timesheet.id}/edit`)}
-                      >
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit Entries
-                      </Button>
-                    )}
+                    {/* Always show Edit button for Draft timesheets */}
+                    <Button
+                      variant="outline"
+                      onClick={() => router.push(`/timesheets/${timesheet.id}/edit`)}
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      Edit Entries
+                    </Button>
 
                     {canRequestWeekendExtra && (
                       <Button
@@ -468,15 +609,15 @@ export default function TimesheetDetailPage() {
                       </Button>
                     )}
                     
-                    {canSubmit && (
-                      <Button
-                        onClick={handleSubmit}
-                        disabled={isSubmitting || !validationResult?.canSubmit}
-                      >
-                        <Send className="mr-2 h-4 w-4" />
-                        {isSubmitting ? 'Submitting...' : 'Submit for Approval'}
-                      </Button>
-                    )}
+                    {/* Always show Submit button for Draft timesheets */}
+                    <Button
+                      onClick={handleSubmit}
+                      disabled={isSubmitting || (validationResult && !validationResult.canSubmit)}
+                      title={validationResult && !validationResult.canSubmit ? 'Please fix critical validation errors before submitting' : undefined}
+                    >
+                      <Send className="mr-2 h-4 w-4" />
+                      {isSubmitting ? 'Submitting...' : 'Submit for Approval'}
+                    </Button>
 
                     {canDelete && (
                       <Button
@@ -488,7 +629,80 @@ export default function TimesheetDetailPage() {
                         {isSubmitting ? 'Deleting...' : 'Delete Timesheet'}
                       </Button>
                     )}
+
+                    {canApprove && (
+                      <div className="pt-3 border-t space-y-2">
+                        <Button
+                          variant="default"
+                          onClick={() => openAction('approve')}
+                          disabled={!workflowInstanceId}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => openAction('decline')}
+                          disabled={!workflowInstanceId}
+                        >
+                          Final Decline
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => openAction('reroute')}
+                          disabled={!workflowInstanceId || !workflowTimeline?.timeline?.length}
+                        >
+                          Decline & Route Back
+                        </Button>
+                      </div>
+                    )}
                   </div>
+
+                  {canApprove && actionMode && (
+                    <div className="mt-4 border-t pt-4 space-y-3">
+                      <p className="text-sm font-medium">
+                        {actionMode === 'approve'
+                          ? 'Approve current step'
+                          : actionMode === 'decline'
+                            ? 'Final decline (timesheet will be declined)'
+                            : 'Decline and route back for re-approval'}
+                      </p>
+                      <textarea
+                        value={actionComment}
+                        onChange={(e) => setActionComment(e.target.value)}
+                        placeholder={
+                          actionMode === 'approve'
+                            ? 'Optional approval comment'
+                            : 'Required: explain why this timesheet is being declined'
+                        }
+                        className="w-full min-h-[90px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
+                      {actionMode === 'reroute' && (
+                        <div>
+                          <p className="text-sm mb-1">Route back to step</p>
+                          <select
+                            value={routeToStep}
+                            onChange={(e) => setRouteToStep(e.target.value)}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          >
+                            {workflowTimeline?.timeline?.map((step) => (
+                              <option key={step.step_order} value={String(step.step_order)}>
+                                Step {step.step_order} ({step.required_permission})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={closeAction} disabled={isActioning}>
+                          Cancel
+                        </Button>
+                        <Button onClick={handleWorkflowAction} disabled={isActioning}>
+                          {isActioning ? 'Processing...' : 'Submit'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

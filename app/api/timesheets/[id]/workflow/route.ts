@@ -3,6 +3,7 @@ import { authenticate } from '@/lib/middleware/auth';
 import { successResponse, errorResponse } from '@/lib/utils/responses';
 import { prisma } from '@/lib/db';
 import { uuidSchema } from '@/lib/utils/validation';
+import { checkPermission } from '@/lib/middleware/permissions';
 
 /**
  * GET /api/timesheets/[id]/workflow
@@ -34,25 +35,23 @@ export async function GET(
       return errorResponse('Timesheet not found', 404);
     }
 
-    // Check if user can view this timesheet
+    // Check access with real permission model:
+    // - own timesheet: allowed for submitters
+    // - admin / read / approve: allowed in location scope
     if (timesheet.user_id !== user.id) {
-      // TODO: Check if user has permission to view all timesheets
-      // For now, allow if user is admin
-      const userRoles = await prisma.userRole.findMany({
-        where: {
-          user_id: user.id,
-          deleted_at: null,
-        },
-        include: {
-          role: true,
-        },
+      const requester = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { primary_location_id: true },
       });
+      const requesterLocationId = requester?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+      if (!requesterLocationId) {
+        return errorResponse('No location available for permission check', 400);
+      }
 
-      const isAdmin = userRoles.some(
-        ur => ur.role.name.toLowerCase().includes('admin') && ur.role.status === 'active'
-      );
-
-      if (!isAdmin) {
+      const isAdmin = await checkPermission(user, 'system.admin', { locationId: requesterLocationId });
+      const canRead = await checkPermission(user, 'timesheet.read', { locationId: requesterLocationId });
+      const canApprove = await checkPermission(user, 'timesheet.approve', { locationId: requesterLocationId });
+      if (!isAdmin && !canRead && !canApprove) {
         return errorResponse('Forbidden: You can only view your own timesheets', 403);
       }
     }

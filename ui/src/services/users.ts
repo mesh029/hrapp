@@ -11,6 +11,9 @@ export interface User {
   status: 'active' | 'suspended';
   staff_number?: string;
   charge_code?: string;
+  contract_start_date?: string | null;
+  contract_end_date?: string | null;
+  contract_status?: string | null;
   primary_location_id?: string;
   manager_id?: string;
   created_at: string;
@@ -24,6 +27,8 @@ export interface CreateUserData {
   status?: 'active' | 'suspended';
   staff_number?: string;
   charge_code?: string;
+  contract_start_date?: string | null;
+  contract_end_date?: string | null;
   primary_location_id?: string;
   manager_id?: string;
   roleIds?: string[];
@@ -35,6 +40,8 @@ export interface UpdateUserData {
   status?: 'active' | 'suspended';
   staff_number?: string;
   charge_code?: string;
+  contract_start_date?: string | null;
+  contract_end_date?: string | null;
   primary_location_id?: string;
   manager_id?: string;
 }

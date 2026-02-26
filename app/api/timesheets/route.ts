@@ -32,9 +32,10 @@ export async function GET(request: NextRequest) {
 
     const hasReadPermission = await checkPermission(user, 'timesheet.read', { locationId: locationId_hasPermission });
     const hasCreatePermission = await checkPermission(user, 'timesheet.create', { locationId: locationId_hasPermission });
+    const hasSubmitPermission = await checkPermission(user, 'timesheet.submit', { locationId: locationId_hasPermission });
     const hasApprovePermission = await checkPermission(user, 'timesheet.approve', { locationId: locationId_hasPermission });
     const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
-    if (!hasReadPermission && !hasCreatePermission && !hasApprovePermission && !isAdmin) {
+    if (!hasReadPermission && !hasCreatePermission && !hasSubmitPermission && !hasApprovePermission && !isAdmin) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 
@@ -48,13 +49,15 @@ export async function GET(request: NextRequest) {
       deleted_at: null,
     };
 
-    // Admin sees all; read/approvers are location-scoped; create-only users see their own.
+    // Admin sees all; approvers see location-scoped; non-approvers see only their own.
     if (isAdmin) {
       if (userId) where.user_id = userId;
-    } else if (hasReadPermission || hasApprovePermission) {
+    } else if (hasApprovePermission) {
+      // Approvers can see location-scoped timesheets
       where.location_id = locationId_hasPermission;
       if (userId) where.user_id = userId;
     } else {
+      // Non-approvers (read-only, create-only, submit-only) see only their own timesheets
       where.user_id = user.id;
     }
 
@@ -151,10 +154,22 @@ export async function POST(request: NextRequest) {
       locationId = userRecord.primary_location_id;
     }
 
+    // Validate dates
+    const periodStart = new Date(validated.period_start);
+    const periodEnd = new Date(validated.period_end);
+    
+    if (isNaN(periodStart.getTime()) || isNaN(periodEnd.getTime())) {
+      return errorResponse('Invalid date format', 400);
+    }
+    
+    if (periodEnd < periodStart) {
+      return errorResponse('End date must be after start date', 400);
+    }
+
     const result = await createTimesheet({
       userId: user.id,
-      periodStart: new Date(validated.period_start),
-      periodEnd: new Date(validated.period_end),
+      periodStart,
+      periodEnd,
       locationId,
     });
 
@@ -182,8 +197,13 @@ export async function POST(request: NextRequest) {
 
     return successResponse(timesheet, 'Timesheet created successfully', 201);
   } catch (error: any) {
+    console.error('Create timesheet error:', error);
     if (error.name === 'ZodError') {
       return errorResponse('Validation error: ' + error.errors[0].message, 400);
+    }
+    // Log full error for debugging
+    if (error.stack) {
+      console.error('Error stack:', error.stack);
     }
     return errorResponse(error.message || 'Failed to create timesheet', 500);
   }

@@ -33,6 +33,8 @@ export default function CreateUserPage() {
     charge_code: '',
     primary_location_id: '',
     manager_id: '',
+    contract_start_date: '',
+    contract_end_date: '',
   });
 
   React.useEffect(() => {
@@ -110,6 +112,8 @@ export default function CreateUserPage() {
         manager_id: userData.manager_id || undefined,
         staff_number: userData.staff_number || undefined,
         charge_code: userData.charge_code || undefined,
+        contract_start_date: userData.contract_start_date || null,
+        contract_end_date: userData.contract_end_date || null,
         roleIds: selectedRoleIds.length > 0 ? selectedRoleIds : undefined,
       });
 
@@ -282,6 +286,28 @@ export default function CreateUserPage() {
                       <option value="active">Active</option>
                       <option value="suspended">Suspended</option>
                     </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="contract_start_date">Contract Start Date</Label>
+                    <Input
+                      id="contract_start_date"
+                      type="date"
+                      value={formData.contract_start_date}
+                      onChange={(e) => setFormData({ ...formData, contract_start_date: e.target.value })}
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="contract_end_date">Contract End Date</Label>
+                    <Input
+                      id="contract_end_date"
+                      type="date"
+                      value={formData.contract_end_date}
+                      onChange={(e) => setFormData({ ...formData, contract_end_date: e.target.value })}
+                      disabled={isLoading}
+                    />
                   </div>
                 </div>
               </div>

@@ -137,6 +137,18 @@ export async function calculateAccrual(
     throw new Error('User not found');
   }
 
+  // Respect employee contract window: accrual only applies while contract is active.
+  const effectiveStartDate = user.contract_start_date && user.contract_start_date > startDate
+    ? user.contract_start_date
+    : startDate;
+  const effectiveEndDate = user.contract_end_date && user.contract_end_date < endDate
+    ? user.contract_end_date
+    : endDate;
+
+  if (effectiveEndDate < effectiveStartDate) {
+    return 0;
+  }
+
   // Resolve accrual rate
   const accrualConfig = await resolveAccrualRate(
     leaveTypeId,
@@ -145,9 +157,9 @@ export async function calculateAccrual(
   );
 
   // Calculate months between dates
-  const monthsDiff = (endDate.getFullYear() - startDate.getFullYear()) * 12 +
-    (endDate.getMonth() - startDate.getMonth()) +
-    (endDate.getDate() >= startDate.getDate() ? 0 : -1);
+  const monthsDiff = (effectiveEndDate.getFullYear() - effectiveStartDate.getFullYear()) * 12 +
+    (effectiveEndDate.getMonth() - effectiveStartDate.getMonth()) +
+    (effectiveEndDate.getDate() >= effectiveStartDate.getDate() ? 0 : -1);
 
   // Calculate accrual based on period
   let daysAccrued = 0;
@@ -200,6 +212,10 @@ export async function processMonthlyAccrual(
     where: {
       status: 'active',
       deleted_at: null,
+      OR: [
+        { contract_status: null },
+        { contract_status: { not: 'expired' } },
+      ],
     },
     include: {
       staff_type: true,

@@ -31,7 +31,9 @@ export async function GET(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    const hasPermission = await checkPermission(user, 'leave.manage', { locationId: locationId_hasPermission });
+    const hasPermission =
+      (await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission })) ||
+      (await checkPermission(user, 'leave.approve', { locationId: locationId_hasPermission }));
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
@@ -123,7 +125,9 @@ export async function POST(request: NextRequest) {
       return errorResponse('No location available for permission check', 400);
     }
 
-    const hasPermission = await checkPermission(user, 'leave.manage', { locationId: locationId_hasPermission });
+    const hasPermission =
+      (await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission })) ||
+      (await checkPermission(user, 'leave.approve', { locationId: locationId_hasPermission }));
     if (!hasPermission) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }

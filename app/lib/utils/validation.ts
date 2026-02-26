@@ -273,7 +273,7 @@ export const declineOvertimeSchema = z.object({
 export const createTimesheetSchema = z.object({
   period_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
   period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
-  location_id: z.string().uuid(),
+  location_id: z.string().uuid().optional(), // Optional - will use user's primary location if not provided
 }).refine(
   (data) => {
     const start = new Date(data.period_start);
@@ -323,6 +323,21 @@ export const updateLeaveAccrualConfigSchema = z.object({
   accrual_rate: z.number().positive().max(365).optional(),
   accrual_period: z.enum(['monthly', 'quarterly', 'annual']).optional(),
   is_active: z.boolean().optional(),
+});
+
+export const applyLeaveAccrualSchema = z.object({
+  leave_type_id: z.string().uuid(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  role_ids: z.array(z.string().uuid()).optional().default([]),
+  user_category_ids: z.array(z.string().uuid()).optional().default([]),
+  user_ids: z.array(z.string().uuid()).optional().default([]),
+  location_id: z.string().uuid().optional().nullable(),
+  staff_type_id: z.string().uuid().optional().nullable(),
+  dry_run: z.boolean().optional().default(false),
+}).refine((data) => new Date(data.start_date) <= new Date(data.end_date), {
+  message: 'start_date must be before or equal to end_date',
+  path: ['end_date'],
 });
 
 /**

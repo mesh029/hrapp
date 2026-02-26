@@ -22,7 +22,8 @@ class ApiClient {
     if (!refreshToken) return null;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      // Use relative path for Next.js API routes
+      const response = await fetch('/api/auth/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
@@ -117,11 +118,13 @@ class ApiClient {
 
     // For 404, 400, 403, and 405, return the error response structure instead of throwing
     // This allows the frontend to check response.success
-    if (!response.ok && (response.status === 404 || response.status === 400 || response.status === 403 || response.status === 405)) {
+    // Also handle 401 if it's a permission error (not auth error)
+    if (!response.ok && (response.status === 404 || response.status === 400 || response.status === 403 || response.status === 405 || 
+        (response.status === 401 && responseData.message && responseData.message.includes('permission')))) {
       return responseData as T;
     }
 
-    // For server errors (500+), still throw
+    // For server errors (500+) and auth errors (401 without permission message), still throw
     if (!response.ok) {
       throw new Error(responseData.message || `Request failed: ${response.status}`);
     }
