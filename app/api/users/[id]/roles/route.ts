@@ -3,6 +3,7 @@ import { authenticate } from '@/lib/middleware/auth';
 import { requirePermission } from '@/lib/middleware/permissions';
 import { prisma } from '@/lib/db';
 import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse } from '@/lib/utils/responses';
+import { invalidateUserPermissionCache } from '@/lib/utils/cache-invalidation';
 import { uuidSchema } from '@/lib/utils/validation';
 import { z } from 'zod';
 
@@ -144,6 +145,9 @@ export async function POST(
         console.error('[User Role] Failed to sync scopes:', syncError.message);
       }
     }
+
+    // OPTIMIZED: Invalidate permission cache when roles change
+    await invalidateUserPermissionCache(params.id);
 
     // Return updated user with roles
     const updatedUser = await prisma.user.findUnique({

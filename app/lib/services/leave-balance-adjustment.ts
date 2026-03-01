@@ -21,10 +21,8 @@ export async function adjustLeaveBalance(
   const adjustment = new Decimal(days);
   const newAllocated = balance.allocated.plus(adjustment);
 
-  // Ensure non-negative
-  if (newAllocated.lessThan(0)) {
-    throw new Error('Adjustment would result in negative balance');
-  }
+  // Allow negative balances (admins can adjust as needed)
+  // This gives admins full control to set balances to any value
 
   // Update balance
   await prisma.leaveBalance.update({

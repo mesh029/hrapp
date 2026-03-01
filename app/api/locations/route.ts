@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
 import { requirePermission } from '@/lib/middleware/permissions';
 import { prisma } from '@/lib/db';
+import { redis } from '@/lib/redis';
 import { calculatePath, calculateLevel } from '@/lib/services/location';
 import { successResponse, errorResponse, unauthorizedResponse } from '@/lib/utils/responses';
 import { z } from 'zod';
@@ -39,6 +40,14 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const tree = searchParams.get('tree') === 'true'; // Return as tree structure
 
+    // OPTIMIZED: Cache locations (read-only, relatively static data)
+    const cacheKey = `locations:${JSON.stringify({ status, tree })}`;
+    const cached = await redis.get(cacheKey);
+    
+    if (cached) {
+      return successResponse(JSON.parse(cached));
+    }
+
     const where: any = {};
     if (status) {
       where.status = status;
@@ -63,6 +72,8 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    let response: any;
+    
     // If tree format requested, build tree structure
     if (tree) {
       type LocationNode = typeof locations[0] & { children: LocationNode[] };
@@ -83,10 +94,15 @@ export async function GET(request: NextRequest) {
         }
       });
 
-      return successResponse({ tree: roots, flat: locations });
+      response = { tree: roots, flat: locations };
+    } else {
+      response = { locations };
     }
 
-    return successResponse({ locations });
+    // Cache for 10 minutes (locations are very static)
+    await redis.setex(cacheKey, 600, JSON.stringify(response));
+
+    return successResponse(response);
   } catch (error: any) {
     console.error('List locations error:', error);
     if (error.message.includes('Unauthorized') || error.message.includes('Forbidden')) {
@@ -159,6 +175,12 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+
+    // OPTIMIZED: Invalidate locations cache when data changes
+    const keys = await redis.keys('locations:*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
 
     return successResponse(location, 'Location created successfully', 201);
   } catch (error: any) {

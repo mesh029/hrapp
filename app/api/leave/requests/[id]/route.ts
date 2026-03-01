@@ -3,6 +3,7 @@ import { authenticate } from '@/lib/middleware/auth';
 import { requirePermission } from '@/lib/middleware/permissions';
 import { prisma } from '@/lib/db';
 import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse } from '@/lib/utils/responses';
+import { invalidateCache } from '@/lib/utils/cache-invalidation';
 import { updateLeaveRequestSchema, uuidSchema } from '@/lib/utils/validation';
 import { validateLeaveRequest } from '@/lib/services/leave-validation';
 import { calculateDaysBetween } from '@/lib/services/leave-balance';
@@ -276,7 +277,9 @@ export async function PATCH(
 
 /**
  * DELETE /api/leave/requests/[id]
- * Soft delete a leave request (only if in Draft status)
+ * Soft delete a leave request
+ * - Creator can delete if in Draft status
+ * - Admin can delete any leave request (past or present)
  */
 export async function DELETE(
   request: NextRequest,
@@ -284,6 +287,36 @@ export async function DELETE(
 ) {
   try {
     const user = await authenticate(request);
+
+    // Check permission for admin
+    const userWithLocation = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { primary_location_id: true },
+    });
+
+    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
+    
+    if (!locationId) {
+      return errorResponse('No location available for permission check', 400);
+    }
+
+    // Check for system.admin permission
+    const isAdmin = await prisma.userRole.findFirst({
+      where: {
+        user_id: user.id,
+        deleted_at: null,
+        role: {
+          status: 'active',
+          role_permissions: {
+            some: {
+              permission: {
+                name: 'system.admin',
+              },
+            },
+          },
+        },
+      },
+    });
 
     // Validate UUID
     const validationResult = uuidSchema.safeParse(params.id);
@@ -300,13 +333,16 @@ export async function DELETE(
       return notFoundResponse('Leave request not found');
     }
 
-    // Only creator can delete, and only if in Draft status
-    if (existing.user_id !== user.id) {
-      return unauthorizedResponse('Only the creator can delete this leave request');
-    }
+    // Admin can delete any leave request
+    // Non-admin can only delete their own Draft leave requests
+    if (!isAdmin) {
+      if (existing.user_id !== user.id) {
+        return unauthorizedResponse('Only the creator can delete this leave request');
+      }
 
-    if (existing.status !== 'Draft') {
-      return errorResponse('Leave request can only be deleted when in Draft status', 400);
+      if (existing.status !== 'Draft') {
+        return errorResponse('Leave request can only be deleted when in Draft status', 400);
+      }
     }
 
     // Soft delete
@@ -319,6 +355,10 @@ export async function DELETE(
         deleted_at: true,
       },
     });
+
+    // Invalidate cache for leave requests and dashboard
+    await invalidateCache('leave:requests:*').catch(err => console.error('Cache invalidation error:', err));
+    await invalidateCache('dashboard:*').catch(err => console.error('Cache invalidation error:', err));
 
     return successResponse(deletedRequest, 'Leave request deleted successfully');
   } catch (error: any) {

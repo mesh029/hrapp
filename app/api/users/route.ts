@@ -10,7 +10,7 @@ const createUserSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email format'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  primary_location_id: z.string().uuid().optional(),
+  primary_location_id: z.string().uuid('Primary location is required'),
   manager_id: z.string().uuid().optional().nullable(), // Optional manager assignment
   status: z.enum(['active', 'suspended', 'deactivated']).optional().default('active'),
   staff_number: z.string().optional().nullable(), // Optional unique staff number
@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const search = searchParams.get('search');
     const location = searchParams.get('location');
+    const roleId = searchParams.get('role_id'); // ENHANCED: Role filter
 
     const where: any = {
       deleted_at: null,
@@ -75,6 +76,19 @@ export async function GET(request: NextRequest) {
     }
     if (location) {
       where.primary_location_id = location;
+    }
+
+    // ENHANCED: Filter by role
+    if (roleId) {
+      where.user_roles = {
+        some: {
+          role_id: roleId,
+          deleted_at: null,
+          role: {
+            status: 'active',
+          },
+        },
+      };
     }
 
     const [users, total] = await Promise.all([
@@ -114,6 +128,19 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               email: true,
+            },
+          },
+          // ENHANCED: Include user roles
+          user_roles: {
+            where: { deleted_at: null },
+            include: {
+              role: {
+                select: {
+                  id: true,
+                  name: true,
+                  status: true,
+                },
+              },
             },
           },
           created_at: true,
@@ -229,6 +256,19 @@ export async function POST(request: NextRequest) {
     // Hash password
     const password_hash = await hashPassword(password);
 
+    // Validate location exists and is active
+    if (!primary_location_id) {
+      return errorResponse('Primary location is required', 400);
+    }
+
+    const location = await prisma.location.findUnique({
+      where: { id: primary_location_id },
+    });
+
+    if (!location || location.status !== 'active' || location.deleted_at) {
+      return errorResponse('Invalid or inactive location', 400);
+    }
+
     // Create user
     const newUser = await prisma.user.create({
       data: {
@@ -236,7 +276,7 @@ export async function POST(request: NextRequest) {
         email,
         password_hash,
         status,
-        primary_location_id: primary_location_id || null,
+        primary_location_id: primary_location_id,
         manager_id: manager_id || null,
         staff_number: staff_number || null,
         charge_code: charge_code || null,

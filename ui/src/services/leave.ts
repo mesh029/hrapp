@@ -243,6 +243,53 @@ export const leaveService = {
   /**
    * Delete a leave type (admin only)
    */
+  async deleteLeaveRequest(id: string): Promise<{
+    success: boolean;
+    message?: string;
+  }> {
+    try {
+      const response = await api.delete(`/api/leave/requests/${id}`);
+      return {
+        success: response.data.success || true,
+        message: response.data.message,
+      };
+    } catch (error: any) {
+      console.error('Delete leave request error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to delete leave request',
+      };
+    }
+  },
+
+  /**
+   * Bulk delete leave requests (admin only)
+   */
+  async bulkDeleteLeaveRequests(ids: string[]): Promise<{
+    success: boolean;
+    message?: string;
+    data?: {
+      deletedCount: number;
+      requestedCount: number;
+      validCount: number;
+    };
+  }> {
+    try {
+      const response = await api.post('/api/leave/requests/bulk-delete', { ids });
+      return {
+        success: response.data.success || true,
+        message: response.data.message,
+        data: response.data.data,
+      };
+    } catch (error: any) {
+      console.error('Bulk delete leave requests error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to delete leave requests',
+      };
+    }
+  },
+
   async deleteLeaveType(id: string): Promise<{
     success: boolean;
     message: string;

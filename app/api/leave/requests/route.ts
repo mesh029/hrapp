@@ -23,11 +23,12 @@ export async function GET(request: NextRequest) {
       select: { primary_location_id: true },
     });
 
-    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
-    
-    if (!locationId) {
-      return errorResponse('No location available for permission check', 400);
+    // Primary location is now required for all users
+    if (!userWithLocation?.primary_location_id) {
+      return errorResponse('User must have a primary location assigned. Please contact your administrator.', 400);
     }
+    
+    const locationId = userWithLocation.primary_location_id;
 
     const hasLeaveRead = await checkPermission(user, 'leave.read', { locationId });
     const hasLeaveCreate = await checkPermission(user, 'leave.create', { locationId });
@@ -158,11 +159,12 @@ export async function POST(request: NextRequest) {
       select: { primary_location_id: true },
     });
 
-    const locationId = userWithLocation?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
-    
-    if (!locationId) {
-      return errorResponse('No location available for permission check', 400);
+    // Primary location is now required for all users
+    if (!userWithLocation?.primary_location_id) {
+      return errorResponse('User must have a primary location assigned. Please contact your administrator.', 400);
     }
+    
+    const locationId = userWithLocation.primary_location_id;
 
     try {
       await requirePermission(user, 'leave.create', { locationId });
@@ -192,7 +194,29 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validation = createLeaveRequestSchema.safeParse(body);
     if (!validation.success) {
-      return errorResponse('Validation failed', 400, validation.error.flatten().fieldErrors);
+      // ENHANCED: Return detailed validation errors
+      const fieldErrors = validation.error.flatten().fieldErrors;
+      const errorMessages: string[] = [];
+      
+      // Convert field errors to readable messages
+      Object.entries(fieldErrors).forEach(([field, messages]) => {
+        if (messages && messages.length > 0) {
+          messages.forEach(msg => {
+            errorMessages.push(`${field}: ${msg}`);
+          });
+        }
+      });
+      
+      return errorResponse(
+        errorMessages.length > 0 
+          ? `Validation failed: ${errorMessages.join('; ')}`
+          : 'Validation failed. Please check all required fields are filled correctly.',
+        400,
+        {
+          errors: errorMessages,
+          fieldErrors: fieldErrors,
+        }
+      );
     }
 
     // Validate leave type exists and is active
@@ -204,9 +228,18 @@ export async function POST(request: NextRequest) {
       return errorResponse('Leave type not found or inactive', 400);
     }
 
+    // ENHANCED: Use provided location_id or use user's primary location (which is now always required)
+    let finalLocationId: string;
+    if (validation.data.location_id) {
+      finalLocationId = validation.data.location_id;
+    } else {
+      // Use user's primary location (guaranteed to exist since it's required)
+      finalLocationId = userWithLocation.primary_location_id;
+    }
+
     // Validate location exists
     const location = await prisma.location.findUnique({
-      where: { id: validation.data.location_id },
+      where: { id: finalLocationId },
     });
 
     if (!location || location.status === 'inactive') {
@@ -218,6 +251,23 @@ export async function POST(request: NextRequest) {
     const endDate = new Date(validation.data.end_date);
     const daysRequested = calculateDaysBetween(startDate, endDate);
 
+    // Get available leave balance to show in error message
+    const currentYear = new Date().getFullYear();
+    const leaveBalance = await prisma.leaveBalance.findUnique({
+      where: {
+        user_id_leave_type_id_year: {
+          user_id: user.id,
+          leave_type_id: validation.data.leave_type_id,
+          year: currentYear,
+        },
+      },
+    });
+
+    const allocated = leaveBalance?.allocated.toNumber() || 0;
+    const used = leaveBalance?.used.toNumber() || 0;
+    const pending = leaveBalance?.pending.toNumber() || 0;
+    const available = allocated - used - pending;
+
     // Validate leave request
     const validationResult = await validateLeaveRequest(
       validation.data.leave_type_id,
@@ -228,9 +278,22 @@ export async function POST(request: NextRequest) {
     );
 
     if (!validationResult.valid) {
+      // ENHANCED: Return detailed error messages with available balance
+      const errorMessages = validationResult.errors.map(err => {
+        if (err.includes('exceed allocated balance')) {
+          return `Insufficient leave balance: You have ${available.toFixed(1)} days available, but requested ${daysRequested} days. (Allocated: ${allocated.toFixed(1)}, Used: ${used.toFixed(1)}, Pending: ${pending.toFixed(1)})`;
+        }
+        return err;
+      });
+      
       return errorResponse('Leave request validation failed', 400, {
-        errors: validationResult.errors,
+        errors: errorMessages,
         warnings: validationResult.warnings,
+        availableBalance: available,
+        requestedDays: daysRequested,
+        allocated: allocated,
+        used: used,
+        pending: pending,
       });
     }
 
@@ -243,7 +306,7 @@ export async function POST(request: NextRequest) {
         end_date: endDate,
         days_requested: new Decimal(daysRequested),
         reason: validation.data.reason || null,
-        location_id: validation.data.location_id,
+        location_id: finalLocationId, // Use resolved locationId
         status: 'Draft',
       },
       include: {

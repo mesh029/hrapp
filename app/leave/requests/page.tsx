@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Calendar, Filter } from 'lucide-react';
+import { Plus, Search, Calendar, Filter, Trash2, CheckSquare, Square } from 'lucide-react';
+import { usePermissions } from '@/ui/src/hooks/use-permissions';
 import { leaveService, LeaveRequest } from '@/ui/src/services/leave';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
 import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
@@ -29,6 +30,7 @@ export default function LeaveRequestsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { features, isLoading: uiLoading } = useDynamicUI();
+  const { hasPermission } = usePermissions();
   const { isVisible: showCreateButton, isEnabled: createButtonEnabled } = useComponentVisibility(
     COMPONENT_ID_CREATE_BUTTON,
     {
@@ -40,12 +42,16 @@ export default function LeaveRequestsPage() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<string>('all');
+  const [selectedRequests, setSelectedRequests] = React.useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = React.useState(false);
   const [pagination, setPagination] = React.useState({
     page: 1,
     limit: 20,
     total: 0,
     totalPages: 0,
   });
+
+  const canDelete = features.isAdmin || hasPermission('system.admin');
 
   React.useEffect(() => {
     // Wait for UI features to load before making API call
@@ -129,6 +135,57 @@ export default function LeaveRequestsPage() {
     });
   };
 
+  const handleSelectAll = () => {
+    if (selectedRequests.size === filteredRequests.length) {
+      setSelectedRequests(new Set());
+    } else {
+      setSelectedRequests(new Set(filteredRequests.map(r => r.id)));
+    }
+  };
+
+  const handleSelectRequest = (id: string) => {
+    const newSelected = new Set(selectedRequests);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedRequests(newSelected);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedRequests.size === 0) {
+      alert('Please select at least one leave request to delete');
+      return;
+    }
+
+    const confirmMessage = `⚠️ WARNING: Are you sure you want to delete ${selectedRequests.size} leave request(s)? This action cannot be undone.`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      const response = await leaveService.bulkDeleteLeaveRequests(Array.from(selectedRequests));
+      if (response.success) {
+        const deletedCount = response.data?.deletedCount || selectedRequests.size;
+        setSelectedRequests(new Set());
+        // Wait a bit to ensure database transaction is committed
+        await new Promise(resolve => setTimeout(resolve, 500));
+        // Reload the list
+        await loadLeaveRequests();
+        alert(`Successfully deleted ${deletedCount} leave request(s)`);
+      } else {
+        alert(response.message || 'Failed to delete leave requests');
+      }
+    } catch (error: any) {
+      console.error('Failed to bulk delete leave requests:', error);
+      alert(error.message || 'Failed to delete leave requests');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <MainLayout>
       <div className="container mx-auto p-6 space-y-6">
@@ -201,9 +258,22 @@ export default function LeaveRequestsPage() {
         {/* Leave Requests List */}
         <Card>
           <CardHeader>
-            <CardTitle>
-              {features.canViewAllLeave ? 'All Leave Requests' : 'My Leave Requests'}
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>
+                {features.canViewAllLeave ? 'All Leave Requests' : 'My Leave Requests'}
+              </CardTitle>
+              {canDelete && selectedRequests.size > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={isDeleting}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {isDeleting ? 'Deleting...' : `Delete ${selectedRequests.size} Selected`}
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -214,14 +284,51 @@ export default function LeaveRequestsPage() {
               </div>
             ) : (
               <div className="space-y-4">
+                {/* Select All Checkbox */}
+                {canDelete && (
+                  <div className="flex items-center gap-2 pb-2 border-b">
+                    <button
+                      type="button"
+                      onClick={handleSelectAll}
+                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      {selectedRequests.size === filteredRequests.length ? (
+                        <CheckSquare className="h-4 w-4" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                      <span>Select All ({selectedRequests.size}/{filteredRequests.length})</span>
+                    </button>
+                  </div>
+                )}
                 {filteredRequests.map((request) => (
                   <div
                     key={request.id}
-                    className="border rounded-lg p-4 hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => handleViewRequest(request.id)}
+                    className={`border rounded-lg p-4 hover:bg-muted/50 transition-colors ${
+                      selectedRequests.has(request.id) ? 'bg-muted border-primary' : ''
+                    }`}
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
+                    <div className="flex items-start justify-between gap-4">
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectRequest(request.id);
+                          }}
+                          className="mt-1"
+                        >
+                          {selectedRequests.has(request.id) ? (
+                            <CheckSquare className="h-5 w-5 text-primary" />
+                          ) : (
+                            <Square className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </button>
+                      )}
+                      <div
+                        className="flex-1 cursor-pointer"
+                        onClick={() => handleViewRequest(request.id)}
+                      >
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="font-semibold">
                             {features.canViewAllLeave && request.user

@@ -183,6 +183,10 @@ export async function POST(
       console.error('[Role Permission] Failed to sync scopes:', syncError.message);
     }
 
+    // OPTIMIZED: Invalidate permission cache for all users with this role
+    const { invalidateRolePermissionCache } = await import('@/lib/utils/cache-invalidation');
+    await invalidateRolePermissionCache(params.id);
+
     // Return updated role with permissions
     const updatedRole = await prisma.role.findUnique({
       where: { id: params.id },

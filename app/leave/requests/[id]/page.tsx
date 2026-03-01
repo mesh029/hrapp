@@ -12,7 +12,8 @@ import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
 import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
 import { useAuth } from '@/ui/src/contexts/auth-context';
 import { ApprovalTimeline, TimelineStep } from '@/components/workflows/ApprovalTimeline';
-import { Calendar, User, Clock, FileText, ArrowLeft } from 'lucide-react';
+import { Calendar, User, Clock, FileText, ArrowLeft, Trash2 } from 'lucide-react';
+import { usePermissions } from '@/ui/src/hooks/use-permissions';
 
 const statusColors: Record<string, string> = {
   Draft: 'bg-gray-500',
@@ -29,9 +30,11 @@ export default function LeaveRequestDetailPage() {
   const params = useParams();
   const { user } = useAuth();
   const { features, isLoading: uiLoading } = useDynamicUI();
+  const { hasPermission } = usePermissions();
   const [request, setRequest] = React.useState<LeaveRequest | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isCancelling, setIsCancelling] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
   const [workflowTimeline, setWorkflowTimeline] = React.useState<{
     has_workflow: boolean;
     workflow_instance_id?: string;
@@ -87,6 +90,33 @@ export default function LeaveRequestDetailPage() {
       setRequest(null);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!request) return;
+
+    const confirmMessage = request.status === 'Approved' 
+      ? '⚠️ WARNING: This leave request has been approved. Are you sure you want to delete it? This action cannot be undone.'
+      : `Are you sure you want to delete this leave request? This action cannot be undone.`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      const response = await leaveService.deleteLeaveRequest(request.id);
+      if (response.success) {
+        router.push('/leave/requests');
+      } else {
+        alert(response.message || 'Failed to delete leave request');
+      }
+    } catch (error: any) {
+      console.error('Failed to delete leave request:', error);
+      alert(error.message || 'Failed to delete leave request');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -427,6 +457,25 @@ export default function LeaveRequestDetailPage() {
           </Card>
         )}
         
+        {/* Admin Actions - Delete (for admins only) */}
+        {(features.isAdmin || hasPermission('system.admin')) && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Admin Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={isDeleting}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {isDeleting ? 'Deleting...' : 'Delete Leave Request'}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Approval Actions */}
         {canApprove && (
           <Card>

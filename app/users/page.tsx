@@ -7,22 +7,34 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Users, Plus, Search, Download, Upload } from 'lucide-react';
 import { usersService } from '@/ui/src/services/users';
+import { rolesService } from '@/ui/src/services/roles';
 import { BulkUploadModal } from '@/components/users/bulk-upload-modal';
 
 export default function UsersPage() {
   const [users, setUsers] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState('');
+  const [selectedRoleId, setSelectedRoleId] = React.useState<string>('all');
+  const [roles, setRoles] = React.useState<any[]>([]);
   const [isBulkUploadOpen, setIsBulkUploadOpen] = React.useState(false);
 
   React.useEffect(() => {
     loadUsers();
+    loadRoles();
   }, []);
+
+  React.useEffect(() => {
+    loadUsers();
+  }, [selectedRoleId]);
 
   const loadUsers = async () => {
     try {
       setIsLoading(true);
-      const response = await usersService.getUsers({ limit: 50 });
+      const params: any = { limit: 50 };
+      if (selectedRoleId !== 'all') {
+        params.role_id = selectedRoleId;
+      }
+      const response = await usersService.getUsers(params);
       console.log('Users API Response:', response); // Debug log
       if (response.success && response.data) {
         // API returns: { success: true, data: { users: [...], pagination: {...} } }
@@ -38,6 +50,20 @@ export default function UsersPage() {
       // Don't show alert, just log - user will see empty state
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadRoles = async () => {
+    try {
+      const response = await rolesService.getRoles({ status: 'active', limit: 100 });
+      if (response.success && response.data) {
+        const rolesList = Array.isArray(response.data) 
+          ? response.data 
+          : (response.data as any).roles || [];
+        setRoles(rolesList);
+      }
+    } catch (error: any) {
+      console.error('Failed to load roles:', error);
     }
   };
 
@@ -69,16 +95,37 @@ export default function UsersPage() {
           </div>
         </div>
 
-        {/* Search */}
+        {/* Search and Filters */}
         <Card className="p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search users by name, email, or staff number..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search users by name, email, or staff number..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {/* ENHANCED: Role Filter */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="role-filter" className="text-sm font-medium text-muted-foreground">
+                Filter by Role:
+              </label>
+              <select
+                id="role-filter"
+                value={selectedRoleId}
+                onChange={(e) => setSelectedRoleId(e.target.value)}
+                className="px-3 py-2 border rounded-md text-sm"
+              >
+                <option value="all">All Roles</option>
+                {roles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </Card>
 
@@ -103,6 +150,7 @@ export default function UsersPage() {
                     <th className="text-left p-4 font-semibold">Name</th>
                     <th className="text-left p-4 font-semibold">Email</th>
                     <th className="text-left p-4 font-semibold">Staff Number</th>
+                    <th className="text-left p-4 font-semibold">Roles</th>
                     <th className="text-left p-4 font-semibold">Status</th>
                     <th className="text-left p-4 font-semibold">Actions</th>
                   </tr>
@@ -113,6 +161,25 @@ export default function UsersPage() {
                       <td className="p-4">{user.name}</td>
                       <td className="p-4">{user.email}</td>
                       <td className="p-4">{user.staff_number || '-'}</td>
+                      <td className="p-4">
+                        {/* ENHANCED: Show user roles */}
+                        {user.user_roles && user.user_roles.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {user.user_roles
+                              .filter((ur: any) => ur.role && ur.role.status === 'active')
+                              .map((ur: any) => (
+                                <span
+                                  key={ur.role.id}
+                                  className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                                >
+                                  {ur.role.name}
+                                </span>
+                              ))}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">No roles</span>
+                        )}
+                      </td>
                       <td className="p-4">
                         <span
                           className={`px-2 py-1 rounded-full text-xs font-medium ${

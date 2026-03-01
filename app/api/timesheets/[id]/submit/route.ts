@@ -67,20 +67,49 @@ export async function POST(
       return errorResponse('Timesheet can only be submitted when in Draft status', 400);
     }
 
-    // Validate timesheet
+    // ENHANCED: Validate timesheet with detailed error messages
     const { canSubmit, validation } = await canSubmitTimesheet(params.id);
     if (!canSubmit) {
-      const errorMessage = validation.notes.length > 0 
-        ? `Timesheet validation failed: ${validation.notes.join('; ')}`
-        : 'Timesheet validation failed';
+      // Extract detailed validation errors
+      const validationErrors: string[] = [];
+      
+      if (validation.notes && validation.notes.length > 0) {
+        validation.notes.forEach((note: any) => {
+          if (typeof note === 'string') {
+            validationErrors.push(note);
+          } else if (note.issue) {
+            validationErrors.push(note.issue);
+          } else if (note.message) {
+            validationErrors.push(note.message);
+          }
+        });
+      }
+      
+      if (validation.errors && Array.isArray(validation.errors)) {
+        validation.errors.forEach((err: any) => {
+          if (typeof err === 'string') {
+            validationErrors.push(err);
+          } else if (err.issue) {
+            validationErrors.push(err.issue);
+          }
+        });
+      }
+      
+      const errorMessage = validationErrors.length > 0
+        ? `Timesheet validation failed: ${validationErrors.join('; ')}`
+        : 'Timesheet validation failed. Please check all entries and ensure required hours are filled.';
+      
       return errorResponse(
         errorMessage,
         400,
-        { validation: [JSON.stringify(validation)] }
+        { 
+          errors: validationErrors,
+          validation: validation,
+        }
       );
     }
 
-    // Check if submission is enabled for this period
+    // ENHANCED: Check if submission is enabled for this period with better error message
     const period = await prisma.timesheetPeriod.findFirst({
       where: {
         period_start: { lte: timesheet.period_start },
@@ -90,7 +119,35 @@ export async function POST(
     });
 
     if (!period) {
-      return errorResponse('Timesheet submission is not enabled for this period', 400);
+      // Check if period exists but is disabled
+      const disabledPeriod = await prisma.timesheetPeriod.findFirst({
+        where: {
+          period_start: { lte: timesheet.period_start },
+          period_end: { gte: timesheet.period_end },
+        },
+      });
+
+      if (disabledPeriod) {
+        return errorResponse(
+          `Timesheet submission is disabled for this period (${new Date(timesheet.period_start).toLocaleDateString()} - ${new Date(timesheet.period_end).toLocaleDateString()}). Please contact your manager to enable submission for this period.`,
+          400,
+          {
+            period_start: timesheet.period_start,
+            period_end: timesheet.period_end,
+            submission_enabled: false,
+          }
+        );
+      } else {
+        return errorResponse(
+          `No timesheet period found for this period (${new Date(timesheet.period_start).toLocaleDateString()} - ${new Date(timesheet.period_end).toLocaleDateString()}). Please contact your manager to set up a timesheet period.`,
+          400,
+          {
+            period_start: timesheet.period_start,
+            period_end: timesheet.period_end,
+            period_exists: false,
+          }
+        );
+      }
     }
 
     // Get timesheet owner's staff type for template matching

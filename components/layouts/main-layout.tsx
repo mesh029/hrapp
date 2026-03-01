@@ -11,6 +11,7 @@ import {
   BarChart, 
   Shield, 
   User,
+  FileText,
   Menu,
   Bell,
   LogOut,
@@ -39,6 +40,7 @@ const iconMap: Record<string, any> = {
   '/reports': BarChart,
   '/administration': Shield,
   '/profile': User,
+  '/employees/overview': FileText,
 };
 
 export function MainLayout({ children }: MainLayoutProps) {
@@ -66,6 +68,7 @@ export function MainLayout({ children }: MainLayoutProps) {
     fallbackCheck: (f) => f.isAdmin,
   });
   const { isVisible: canViewNavProfile } = useComponentVisibility('nav.profile', { defaultVisible: true });
+  const { isVisible: canViewNavOverview } = useComponentVisibility('nav.overview', { defaultVisible: true });
   const [isMinimized, setIsMinimized] = React.useState(true); // Start minimized
   const [isMobileOpen, setIsMobileOpen] = React.useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
@@ -177,6 +180,7 @@ export function MainLayout({ children }: MainLayoutProps) {
     '/reports': canViewNavReports,
     '/administration': canViewNavAdministration,
     '/profile': canViewNavProfile,
+    '/employees/overview': canViewNavOverview,
   };
 
   const navigationItems = dynamicNavItems

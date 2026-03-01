@@ -92,6 +92,11 @@ export default function CreateUserPage() {
     setError('');
 
     // Validation
+    if (!formData.primary_location_id) {
+      setError('Primary location is required');
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -108,7 +113,7 @@ export default function CreateUserPage() {
       const { confirmPassword, ...userData } = formData;
       const response = await usersService.createUser({
         ...userData,
-        primary_location_id: userData.primary_location_id || undefined,
+        primary_location_id: userData.primary_location_id,
         manager_id: userData.manager_id || undefined,
         staff_number: userData.staff_number || undefined,
         charge_code: userData.charge_code || undefined,
@@ -239,15 +244,16 @@ export default function CreateUserPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="primary_location_id">Primary Location</Label>
+                    <Label htmlFor="primary_location_id">Primary Location *</Label>
                     <select
                       id="primary_location_id"
                       value={formData.primary_location_id}
                       onChange={(e) => setFormData({ ...formData, primary_location_id: e.target.value })}
                       disabled={isLoading}
+                      required
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <option value="">None</option>
+                      <option value="">Select a location</option>
                       {locations.map((location) => (
                         <option key={location.id} value={location.id}>
                           {location.name}

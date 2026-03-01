@@ -27,6 +27,10 @@ services:
       - "6380:6379"
     volumes:
       - redis_data:/data
+    # OPTIMIZED: Configure Redis with memory limits and eviction policy
+    # - maxmemory 512mb: Limit Redis memory usage
+    # - maxmemory-policy allkeys-lru: Evict least recently used keys when memory limit is reached
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

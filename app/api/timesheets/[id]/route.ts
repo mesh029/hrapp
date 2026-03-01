@@ -3,6 +3,7 @@ import { authenticate } from '@/lib/middleware/auth';
 import { checkPermission } from '@/lib/middleware/permissions';
 import { uuidSchema } from '@/lib/utils/validation';
 import { successResponse, errorResponse } from '@/lib/utils/responses';
+import { invalidateCache } from '@/lib/utils/cache-invalidation';
 import { prisma } from '@/lib/db';
 
 /**
@@ -187,6 +188,10 @@ export async function DELETE(
         deleted_at: true,
       },
     });
+
+    // Invalidate cache for timesheets and dashboard
+    await invalidateCache('timesheet:*').catch(err => console.error('Cache invalidation error:', err));
+    await invalidateCache('dashboard:*').catch(err => console.error('Cache invalidation error:', err));
 
     return successResponse(deletedTimesheet, 'Timesheet deleted successfully');
   } catch (error: any) {

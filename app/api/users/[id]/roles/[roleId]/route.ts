@@ -3,6 +3,7 @@ import { authenticate } from '@/lib/middleware/auth';
 import { requirePermission } from '@/lib/middleware/permissions';
 import { prisma } from '@/lib/db';
 import { successResponse, errorResponse, unauthorizedResponse, notFoundResponse } from '@/lib/utils/responses';
+import { invalidateUserPermissionCache } from '@/lib/utils/cache-invalidation';
 import { uuidSchema } from '@/lib/utils/validation';
 
 /**
@@ -98,6 +99,9 @@ export async function DELETE(
       // Log error but don't fail the request
       console.error('[User Role] Failed to cleanup scopes:', cleanupError.message);
     }
+
+    // OPTIMIZED: Invalidate permission cache when roles change
+    await invalidateUserPermissionCache(params.id);
 
     // Return updated user
     const updatedUser = await prisma.user.findUnique({

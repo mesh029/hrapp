@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
 import { checkPermission } from '@/lib/middleware/permissions';
 import { updateContractStatus } from '@/lib/services/leave-balance-reset';
-import { updateContractSchema, uuidSchema } from '@/lib/utils/validation';
+import { autoCalculateAndAllocateLeaveDays } from '@/lib/services/contract-leave-management';
+import { contractWithLeaveAllocationSchema, uuidSchema } from '@/lib/utils/validation';
 import { successResponse, errorResponse } from '@/lib/utils/responses';
 import { prisma } from '@/lib/db';
 
@@ -33,14 +34,34 @@ export async function PATCH(
       return errorResponse('No location available for permission check', 400);
     }
 
-    const hasPermission = await checkPermission(user, 'users.update', { locationId: locationId_hasPermission });
-    if (!hasPermission) {
+    // Allow users.update OR users.manage (for HR assistants)
+    const hasUpdatePermission = await checkPermission(user, 'users.update', { locationId: locationId_hasPermission });
+    const hasManagePermission = await checkPermission(user, 'users.manage', { locationId: locationId_hasPermission });
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId: locationId_hasPermission });
+    
+    if (!hasUpdatePermission && !hasManagePermission && !isAdmin) {
       return errorResponse('Forbidden: Insufficient permissions', 403);
     }
 
     uuidSchema.parse(params.id);
     const body = await request.json();
-    const validated = updateContractSchema.parse(body);
+    
+    // Try contractWithLeaveAllocationSchema first (enhanced), fallback to updateContractSchema
+    let validated: any;
+    let autoCalculate = false;
+    let leaveTypeId: string | undefined;
+    let manualDays: number | undefined;
+    
+    try {
+      validated = contractWithLeaveAllocationSchema.parse(body);
+      autoCalculate = validated.auto_calculate_leave;
+      leaveTypeId = validated.leave_type_id;
+      manualDays = validated.manual_leave_days;
+    } catch {
+      // Fallback to simple contract update
+      const { updateContractSchema } = await import('@/lib/utils/validation');
+      validated = updateContractSchema.parse(body);
+    }
 
     const updateData: any = {};
     if (validated.contract_start_date !== undefined) {
@@ -50,13 +71,46 @@ export async function PATCH(
       updateData.contract_end_date = validated.contract_end_date ? new Date(validated.contract_end_date) : null;
     }
 
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id: params.id },
       data: updateData,
+      select: {
+        id: true,
+        contract_start_date: true,
+        contract_end_date: true,
+      },
     });
 
     // Update contract status
     await updateContractStatus(params.id);
+
+    // Handle leave allocation if requested
+    if (autoCalculate && leaveTypeId && updatedUser.contract_start_date) {
+      const year = new Date(updatedUser.contract_start_date).getFullYear();
+      try {
+        await autoCalculateAndAllocateLeaveDays(
+          params.id,
+          updatedUser.contract_start_date,
+          updatedUser.contract_end_date,
+          leaveTypeId,
+          year
+        );
+      } catch (error: any) {
+        console.error('Error auto-calculating leave days:', error);
+        // Don't fail the contract update if leave calculation fails
+      }
+    } else if (manualDays && leaveTypeId) {
+      const { allocateLeaveDays } = await import('@/lib/services/leave-balance');
+      const year = updatedUser.contract_start_date 
+        ? new Date(updatedUser.contract_start_date).getFullYear()
+        : new Date().getFullYear();
+      try {
+        await allocateLeaveDays(params.id, leaveTypeId, year, manualDays);
+      } catch (error: any) {
+        console.error('Error manually allocating leave days:', error);
+        // Don't fail the contract update if leave allocation fails
+      }
+    }
 
     const updated = await prisma.user.findUnique({
       where: { id: params.id },

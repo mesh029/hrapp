@@ -18,7 +18,8 @@ import {
   Calendar,
   Clock,
   BarChart,
-  Workflow
+  Workflow,
+  FileText
 } from 'lucide-react';
 
 const COMPONENT_ID_VIEW = 'admin.dashboard.view';
@@ -94,6 +95,24 @@ export default function AdministrationPage() {
       href: '/administration/leave-accrual',
       color: 'text-emerald-600',
       bgColor: 'bg-emerald-50',
+    },
+    {
+      id: 'leave-balances',
+      title: 'Leave Balance Management',
+      description: 'Add, subtract, or allocate leave days for employees',
+      icon: Calendar,
+      href: '/administration/leave-balances',
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+    },
+    {
+      id: 'contracts-leave',
+      title: 'Contract & Leave Management',
+      description: 'Assign contracts, bulk reset/allocate leave balances',
+      icon: FileText,
+      href: '/administration/contracts-leave',
+      color: 'text-indigo-600',
+      bgColor: 'bg-indigo-50',
     },
     {
       id: 'work-hours',

@@ -7,6 +7,7 @@
     "prebuild": "npm run verify:setup",
     "predev": "prisma generate",
     "dev": "next dev -p ${PORT:-3001}",
+    "fix:ui": "./scripts/fix-ui-styling.sh",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",

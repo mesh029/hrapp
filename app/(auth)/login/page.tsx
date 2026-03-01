@@ -44,9 +44,9 @@ export default function LoginPage() {
     setError('');
     try {
       // Use the public endpoint that doesn't require authentication
-      const response = await api.get('/api/auth/quick-login/users?limit=100&status=active', { skipAuth: true });
+      const response = await api.get<{ success?: boolean; data?: { users?: QuickLoginUser[] } }>('/api/auth/quick-login/users?limit=100&status=active', { skipAuth: true });
       console.log('Users response:', response);
-      if (response && response.success && response.data) {
+      if (response && 'success' in response && response.success && response.data) {
         const users = response.data.users || [];
         console.log('Parsed users:', users.length);
         setQuickLoginUsers(users);

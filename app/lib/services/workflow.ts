@@ -323,6 +323,10 @@ export async function submitWorkflowInstance(instanceId: string): Promise<void> 
     throw new Error('Resource location not found');
   }
 
+  if (!locationId) {
+    throw new Error('Resource location not found');
+  }
+
   // Update instance status
   await prisma.workflowInstance.update({
     where: { id: instanceId },
@@ -1179,11 +1183,18 @@ export async function approveWorkflowStep(params: WorkflowActionParams): Promise
       console.error('Failed to create audit log for workflow approval:', error);
     });
 
-    // Update resource status
+    // Update resource status and handle resource-specific approval logic
     if (instance.resource_type === 'leave') {
       await prisma.leaveRequest.update({
         where: { id: instance.resource_id },
         data: { status: 'Approved' },
+      });
+      
+      // ENHANCED: Move pending days to used days when leave is fully approved
+      const { handleLeaveRequestApproval } = await import('./leave-workflow');
+      await handleLeaveRequestApproval(instanceId).catch((error) => {
+        console.error('Failed to process leave approval balance update:', error);
+        // Don't fail the workflow approval if balance update fails
       });
     } else if (instance.resource_type === 'timesheet') {
       await prisma.timesheet.update({
@@ -1521,6 +1532,47 @@ export async function adjustWorkflowStep(params: WorkflowActionParams): Promise<
     await prisma.timesheet.update({
       where: { id: instance.resource_id },
       data: { status: 'Adjusted' },
+    });
+  }
+}
+
+/**
+ * Cancel a workflow instance
+ * Only the creator can cancel a workflow instance
+ */
+export async function cancelWorkflowInstance(instanceId: string, userId: string): Promise<void> {
+  const instance = await prisma.workflowInstance.findUnique({
+    where: { id: instanceId },
+  });
+
+  if (!instance) {
+    throw new Error('Workflow instance not found');
+  }
+
+  if (instance.created_by !== userId) {
+    throw new Error('Only the creator can cancel this workflow instance');
+  }
+
+  if (instance.status === 'Approved' || instance.status === 'Declined' || instance.status === 'Cancelled') {
+    throw new Error('Cannot cancel a finalized workflow instance');
+  }
+
+  // Update workflow instance status
+  await prisma.workflowInstance.update({
+    where: { id: instanceId },
+    data: {
+      status: 'Cancelled',
+    },
+  });
+
+  // Call resource-specific cancellation handler
+  if (instance.resource_type === 'leave') {
+    const { handleLeaveRequestCancel } = await import('@/lib/services/leave-workflow');
+    await handleLeaveRequestCancel(instanceId);
+  } else if (instance.resource_type === 'timesheet') {
+    await prisma.timesheet.update({
+      where: { id: instance.resource_id },
+      data: { status: 'Cancelled' },
     });
   }
 }

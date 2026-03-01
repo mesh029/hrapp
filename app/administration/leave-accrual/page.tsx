@@ -72,7 +72,10 @@ export default function LeaveAccrualAdminPage() {
       ]);
 
       setConfigs((cfgRes?.data?.configs || cfgRes?.data?.data?.configs || []) as LeaveAccrualConfig[]);
-      setLeaveTypes((leaveTypesRes?.data?.leaveTypes || leaveTypesRes?.data || []) as Array<{ id: string; name: string }>);
+      const leaveTypesData = Array.isArray(leaveTypesRes?.data) 
+        ? leaveTypesRes.data 
+        : (leaveTypesRes?.data as any)?.leaveTypes || leaveTypesRes?.data || [];
+      setLeaveTypes(leaveTypesData as Array<{ id: string; name: string }>);
       setLocations(
         (locationsRes?.data?.flat || locationsRes?.data?.locations || locationsRes?.data?.tree || []) as Array<{
           id: string;
@@ -80,9 +83,15 @@ export default function LeaveAccrualAdminPage() {
         }>
       );
       setStaffTypes((staffTypesRes?.data?.staffTypes || staffTypesRes?.data?.data?.staffTypes || []) as StaffType[]);
-      setRoles((rolesRes?.data?.roles || rolesRes?.data?.data?.roles || []) as Role[]);
-      setUserCategories((categoriesRes?.data || categoriesRes?.data?.data || []) as UserCategory[]);
-      setUsers((usersRes?.data?.users || usersRes?.data?.data?.users || []) as User[]);
+      const rolesData = (rolesRes?.data as any)?.roles || (rolesRes?.data as any)?.data?.roles || rolesRes?.data || [];
+      setRoles(Array.isArray(rolesData) ? rolesData : []);
+      const categoriesData = Array.isArray(categoriesRes?.data) 
+        ? categoriesRes.data 
+        : (categoriesRes?.data as any)?.data || categoriesRes?.data || [];
+      setUserCategories(categoriesData as UserCategory[]);
+      
+      const usersData = (usersRes?.data as any)?.users || (usersRes?.data as any)?.data?.users || usersRes?.data || [];
+      setUsers(Array.isArray(usersData) ? usersData : []);
     } catch (e: any) {
       setError(e.message || 'Failed to load leave accrual configuration');
     } finally {

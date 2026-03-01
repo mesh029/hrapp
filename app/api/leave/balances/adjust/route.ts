@@ -17,22 +17,25 @@ export async function POST(request: NextRequest) {
       return errorResponse('Unauthorized', 401);
     }
 
-    // Check permission
-    // Check permission
-    const userWithLocation_hasPermission = await prisma.user.findUnique({
+    // Check permission - allow system.admin or leave.balances.manage
+    const userWithLocation = await prisma.user.findUnique({
       where: { id: user.id },
       select: { primary_location_id: true },
     });
 
-    const locationId_hasPermission = userWithLocation_hasPermission?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
-    
-    if (!locationId_hasPermission) {
-      return errorResponse('No location available for permission check', 400);
+    // Primary location is now required for all users
+    if (!userWithLocation?.primary_location_id) {
+      return errorResponse('User must have a primary location assigned. Please contact your administrator.', 400);
     }
 
-    const hasPermission = await checkPermission(user, 'leave.manage', { locationId: locationId_hasPermission });
-    if (!hasPermission) {
-      return errorResponse('Forbidden: Insufficient permissions', 403);
+    const locationId = userWithLocation.primary_location_id;
+
+    // Check for leave.balances.manage or system.admin permission
+    const hasManagePermission = await checkPermission(user, 'leave.balances.manage', { locationId });
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId });
+    
+    if (!hasManagePermission && !isAdmin) {
+      return errorResponse('Forbidden: Only administrators can adjust leave balances', 403);
     }
 
     const body = await request.json();
@@ -67,22 +70,25 @@ export async function GET(request: NextRequest) {
       return errorResponse('Unauthorized', 401);
     }
 
-    // Check permission
-    // Check permission
-    const userWithLocation_hasPermission = await prisma.user.findUnique({
+    // Check permission - allow system.admin or leave.balances.manage
+    const userWithLocation = await prisma.user.findUnique({
       where: { id: user.id },
       select: { primary_location_id: true },
     });
 
-    const locationId_hasPermission = userWithLocation_hasPermission?.primary_location_id || (await prisma.location.findFirst({ select: { id: true } }))?.id;
-    
-    if (!locationId_hasPermission) {
-      return errorResponse('No location available for permission check', 400);
+    // Primary location is now required for all users
+    if (!userWithLocation?.primary_location_id) {
+      return errorResponse('User must have a primary location assigned. Please contact your administrator.', 400);
     }
 
-    const hasPermission = await checkPermission(user, 'leave.read', { locationId: locationId_hasPermission });
-    if (!hasPermission) {
-      return errorResponse('Forbidden: Insufficient permissions', 403);
+    const locationId = userWithLocation.primary_location_id;
+
+    // Check for leave.balances.manage or system.admin permission
+    const hasManagePermission = await checkPermission(user, 'leave.balances.manage', { locationId });
+    const isAdmin = await checkPermission(user, 'system.admin', { locationId });
+    
+    if (!hasManagePermission && !isAdmin) {
+      return errorResponse('Forbidden: Only administrators can view adjustment history', 403);
     }
 
     const { searchParams } = new URL(request.url);

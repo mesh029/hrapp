@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
 import { checkPermission } from '@/lib/middleware/permissions';
 import { prisma } from '@/lib/db';
+import { redis } from '@/lib/redis';
 import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse } from '@/lib/utils/responses';
 import { createLeaveTypeSchema, paginationSchema } from '@/lib/utils/validation';
 
@@ -64,6 +65,15 @@ export async function GET(request: NextRequest) {
       ];
     }
 
+    // OPTIMIZED: Cache leave types (read-only, relatively static data)
+    // Cache key includes filters to handle different queries
+    const cacheKey = `leave_types:${JSON.stringify({ status, is_paid, search, page, limit })}`;
+    const cached = await redis.get(cacheKey);
+    
+    if (cached) {
+      return successResponse(JSON.parse(cached));
+    }
+
     // Get leave types
     const [leaveTypes, total] = await Promise.all([
       prisma.leaveType.findMany({
@@ -83,7 +93,7 @@ export async function GET(request: NextRequest) {
       prisma.leaveType.count({ where }),
     ]);
 
-    return successResponse({
+    const response = {
       leaveTypes,
       pagination: {
         page,
@@ -91,7 +101,12 @@ export async function GET(request: NextRequest) {
         total,
         totalPages: Math.ceil(total / limit),
       },
-    });
+    };
+
+    // Cache for 5 minutes (leave types are relatively static)
+    await redis.setex(cacheKey, 300, JSON.stringify(response));
+
+    return successResponse(response);
   } catch (error: any) {
     console.error('List leave types error:', error);
     if (error.message.includes('Unauthorized')) {
@@ -163,6 +178,12 @@ export async function POST(request: NextRequest) {
         accrual_rule: validation.data.accrual_rule || null,
       },
     });
+
+    // OPTIMIZED: Invalidate leave types cache when data changes
+    const keys = await redis.keys('leave_types:*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
 
     return successResponse(leaveType, undefined, 201);
   } catch (error: any) {

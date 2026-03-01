@@ -4,7 +4,14 @@ import 'reactflow/dist/style.css';
 import './globals.css';
 import { AuthProvider } from '@/ui/src/contexts/auth-context';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+// Robust font loading with fallbacks to prevent build failures
+const inter = Inter({ 
+  subsets: ['latin'], 
+  variable: '--font-sans',
+  display: 'swap',
+  fallback: ['system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Arial', 'sans-serif'],
+  adjustFontFallback: true,
+});
 
 export const metadata: Metadata = {
   title: 'HR Management System',

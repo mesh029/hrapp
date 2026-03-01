@@ -169,6 +169,34 @@ export const timesheetService = {
   },
 
   /**
+   * Bulk delete timesheets (admin only)
+   */
+  async bulkDeleteTimesheets(ids: string[]): Promise<{
+    success: boolean;
+    message?: string;
+    data?: {
+      deletedCount: number;
+      requestedCount: number;
+      validCount: number;
+    };
+  }> {
+    try {
+      const response = await api.post('/api/timesheets/bulk-delete', { ids });
+      return {
+        success: response.data.success || true,
+        message: response.data.message,
+        data: response.data.data,
+      };
+    } catch (error: any) {
+      console.error('Bulk delete timesheets error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Failed to delete timesheets',
+      };
+    }
+  },
+
+  /**
    * Validate a timesheet
    */
   async validateTimesheet(id: string): Promise<{

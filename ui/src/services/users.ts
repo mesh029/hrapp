@@ -71,6 +71,7 @@ export const usersService = {
     search?: string;
     status?: string;
     location_id?: string;
+    role_id?: string; // ENHANCED: Role filter
   }): Promise<UsersListResponse> {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append('page', params.page.toString());
@@ -78,6 +79,7 @@ export const usersService = {
     if (params?.search) queryParams.append('search', params.search);
     if (params?.status) queryParams.append('status', params.status);
     if (params?.location_id) queryParams.append('location_id', params.location_id);
+    if (params?.role_id) queryParams.append('role_id', params.role_id); // ENHANCED: Role filter
 
     const query = queryParams.toString();
     return api.get<UsersListResponse>(`/api/users${query ? `?${query}` : ''}`);

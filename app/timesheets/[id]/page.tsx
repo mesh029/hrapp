@@ -13,7 +13,7 @@ import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
 import { usePermissions } from '@/ui/src/hooks/use-permissions';
 import { useAuth } from '@/ui/src/contexts/auth-context';
 import { ApprovalTimeline, TimelineStep } from '@/components/workflows/ApprovalTimeline';
-import { Calendar, User, Clock, FileText, ArrowLeft, Edit, Send, CheckCircle, ClockIcon, CalendarDays, Trash2 } from 'lucide-react';
+import { Calendar, User, Clock, FileText, ArrowLeft, Edit, Send, CheckCircle, ClockIcon, CalendarDays, Trash2, AlertCircle } from 'lucide-react';
 
 const COMPONENT_ID_DETAIL_VIEW = 'timesheet.detail.view';
 const COMPONENT_ID_EDIT_ACTION = 'timesheet.edit.action';
@@ -39,6 +39,8 @@ export default function TimesheetDetailPage() {
   const [timesheet, setTimesheet] = React.useState<Timesheet | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [submitValidationErrors, setSubmitValidationErrors] = React.useState<string[]>([]);
   const [validationResult, setValidationResult] = React.useState<{
     canSubmit: boolean;
     validation: {
@@ -133,22 +135,31 @@ export default function TimesheetDetailPage() {
     fallbackCheck: (features) => timesheet?.status === 'Draft' && features.canCreateTimesheet && !features.isAdmin,
   });
 
+  // ENHANCED: Show approve button for Submitted or UnderReview status if user can approve
+  // IMPORTANT: Show button even if workflow instance is not loaded yet - it will be disabled until loaded
+  // FIXED: Check permission separately and combine with status check in render
+  const hasApprovePermission = features.canApproveTimesheet || features.isAdmin;
+  
   const { isVisible: canApproveAction } = useComponentVisibility('timesheet.approve.action', {
     fallbackPermission: 'timesheet.approve',
-    fallbackCheck: (features) => timesheet?.status === 'UnderReview' && features.canApproveTimesheet,
+    fallbackCheck: () => hasApprovePermission, // Just check permission, status check happens in render
+    defaultVisible: false,
   });
 
   // Check if user can delete (admin only)
   const canDelete = features.isAdmin || hasPermission('timesheet.delete') || hasPermission('system.admin');
-  const workflowInstanceId = workflowTimeline?.workflow_instance_id;
-  const canApprove = canApproveAction;
+  // ENHANCED: Get workflow instance ID from timesheet if not in timeline yet
+  const workflowInstanceId = workflowTimeline?.workflow_instance_id || timesheet?.workflow_instance_id;
+  // FIXED: canApprove now includes both permission check and status check (status checked in render)
+  const canApprove = canApproveAction && hasApprovePermission;
 
   React.useEffect(() => {
-    if (timesheetId && canView) {
+    if (timesheetId) {
+      // Load timesheet regardless of canView - let the API handle permission checks
       loadTimesheet();
       loadValidation();
     }
-  }, [timesheetId, canView]);
+  }, [timesheetId]);
 
   const loadTimesheet = async () => {
     try {
@@ -166,16 +177,50 @@ export default function TimesheetDetailPage() {
       
       if (timesheetResponse.success && timesheetResponse.data) {
         setTimesheet(timesheetResponse.data);
+        
+        // ENHANCED: If timesheet has workflow_instance_id but workflow response failed, try to load it
+        if (timesheetResponse.data.workflow_instance_id && (!workflowResponse.success || !workflowResponse.data)) {
+          console.log('[Timesheet] Timesheet has workflow_instance_id but workflow not loaded, retrying...');
+          try {
+            const retryResponse = await timesheetService.getTimesheetWorkflow(timesheetId);
+            if (retryResponse.success && retryResponse.data) {
+              setWorkflowTimeline(retryResponse.data);
+            } else {
+              // Still set workflow_instance_id from timesheet even if workflow API fails
+              setWorkflowTimeline({
+                has_workflow: true,
+                workflow_instance_id: timesheetResponse.data.workflow_instance_id,
+                timeline: [],
+              });
+            }
+          } catch (retryError) {
+            console.error('[Timesheet] Failed to retry workflow load:', retryError);
+            // Set workflow_instance_id from timesheet
+            setWorkflowTimeline({
+              has_workflow: true,
+              workflow_instance_id: timesheetResponse.data.workflow_instance_id,
+              timeline: [],
+            });
+          }
+        } else if (workflowResponse.success && workflowResponse.data) {
+          console.log('[Timesheet] Workflow data:', workflowResponse.data);
+          setWorkflowTimeline(workflowResponse.data);
+        } else {
+          console.log('[Timesheet] No workflow data or error:', workflowResponse);
+          // ENHANCED: If timesheet has workflow_instance_id, preserve it
+          if (timesheetResponse.data.workflow_instance_id) {
+            setWorkflowTimeline({
+              has_workflow: true,
+              workflow_instance_id: timesheetResponse.data.workflow_instance_id,
+              timeline: [],
+            });
+          } else {
+            setWorkflowTimeline({ has_workflow: false, timeline: [] });
+          }
+        }
       } else {
         console.error('Timesheet not found or error:', timesheetResponse.message || 'Unknown error');
         setTimesheet(null);
-      }
-      
-      if (workflowResponse.success && workflowResponse.data) {
-        console.log('[Timesheet] Workflow data:', workflowResponse.data);
-        setWorkflowTimeline(workflowResponse.data);
-      } else {
-        console.log('[Timesheet] No workflow data or error:', workflowResponse);
         setWorkflowTimeline({ has_workflow: false, timeline: [] });
       }
     } catch (error: any) {
@@ -204,13 +249,42 @@ export default function TimesheetDetailPage() {
 
     try {
       setIsSubmitting(true);
+      setSubmitError(null);
+      setSubmitValidationErrors([]);
+      
       const response = await timesheetService.submitTimesheet(timesheet.id);
       if (response.success) {
         router.push('/timesheets');
+      } else {
+        // ENHANCED: Extract detailed error messages
+        const errorData = (response as any).errors || {};
+        const errorMessage = (response as any).message || 'Failed to submit timesheet';
+        
+        // Handle different error response structures
+        if (errorData.errors && Array.isArray(errorData.errors)) {
+          setSubmitValidationErrors(errorData.errors);
+          setSubmitError(errorMessage);
+        } else if (errorMessage.includes('submission is not enabled') || errorMessage.includes('No timesheet period')) {
+          // Special handling for period-related errors
+          setSubmitError(errorMessage);
+          setSubmitValidationErrors([errorMessage]);
+        } else {
+          setSubmitError(errorMessage);
+          setSubmitValidationErrors([]);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to submit timesheet:', error);
-      alert('Failed to submit timesheet');
+      // ENHANCED: Parse error response for detailed messages
+      if (error.response?.data?.errors) {
+        const errors = Array.isArray(error.response.data.errors) 
+          ? error.response.data.errors 
+          : [error.response.data.message || 'Failed to submit timesheet'];
+        setSubmitValidationErrors(errors);
+        setSubmitError(error.response.data.message || 'Failed to submit timesheet');
+      } else {
+        setSubmitError(error.message || 'Failed to submit timesheet');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -262,8 +336,28 @@ export default function TimesheetDetailPage() {
   };
 
   const handleWorkflowAction = async () => {
-    if (!workflowInstanceId || !actionMode) {
-      setActionError('Workflow instance is not available for this timesheet.');
+    // ENHANCED: Try to get workflow instance ID from timesheet if not available
+    const effectiveWorkflowInstanceId = workflowInstanceId || timesheet?.workflow_instance_id;
+    
+    if (!effectiveWorkflowInstanceId || !actionMode) {
+      setActionError('Workflow instance is not available for this timesheet. Please refresh the page or contact support.');
+      // Try to reload workflow if timesheet has workflow_instance_id
+      if (timesheet?.workflow_instance_id && !workflowInstanceId) {
+        try {
+          const workflowResponse = await timesheetService.getTimesheetWorkflow(timesheetId);
+          if (workflowResponse.success && workflowResponse.data) {
+            setWorkflowTimeline(workflowResponse.data);
+            // Retry the action after reloading
+            setTimeout(() => {
+              if (workflowResponse.data.workflow_instance_id) {
+                handleWorkflowAction();
+              }
+            }, 100);
+          }
+        } catch (error) {
+          console.error('Failed to reload workflow:', error);
+        }
+      }
       return;
     }
 
@@ -276,17 +370,18 @@ export default function TimesheetDetailPage() {
       setIsActioning(true);
       setActionError(null);
 
+      // Use effective workflow instance ID
       if (actionMode === 'approve') {
-        await workflowService.approveInstance(workflowInstanceId, actionComment.trim() || undefined);
+        await workflowService.approveInstance(effectiveWorkflowInstanceId, actionComment.trim() || undefined);
       } else if (actionMode === 'decline') {
-        await workflowService.declineInstance(workflowInstanceId, actionComment.trim());
+        await workflowService.declineInstance(effectiveWorkflowInstanceId, actionComment.trim());
       } else {
         const step = Number(routeToStep);
         if (!Number.isInteger(step) || step < 1) {
           setActionError('Select a valid step to route back to.');
           return;
         }
-        await workflowService.routeBackInstance(workflowInstanceId, actionComment.trim(), step);
+        await workflowService.routeBackInstance(effectiveWorkflowInstanceId, actionComment.trim(), step);
       }
 
       closeAction();
@@ -572,7 +667,7 @@ export default function TimesheetDetailPage() {
               </Card>
             )}
 
-            {/* Actions - Always show for Draft timesheets */}
+            {/* Actions - Show for Draft timesheets */}
             {timesheet?.status === 'Draft' && (
               <Card>
                 <CardHeader>
@@ -609,6 +704,23 @@ export default function TimesheetDetailPage() {
                       </Button>
                     )}
                     
+                    {/* ENHANCED: Submission Error Display */}
+                    {submitError && (
+                      <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertCircle className="h-4 w-4" />
+                          <span className="font-medium">{submitError}</span>
+                        </div>
+                        {submitValidationErrors.length > 0 && (
+                          <ul className="list-disc list-inside mt-2 space-y-1">
+                            {submitValidationErrors.map((err, idx) => (
+                              <li key={idx} className="text-xs">{err}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
                     {/* Always show Submit button for Draft timesheets */}
                     <Button
                       onClick={handleSubmit}
@@ -619,46 +731,83 @@ export default function TimesheetDetailPage() {
                       {isSubmitting ? 'Submitting...' : 'Submit for Approval'}
                     </Button>
 
-                    {canDelete && (
-                      <Button
-                        variant="destructive"
-                        onClick={handleDelete}
-                        disabled={isSubmitting}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        {isSubmitting ? 'Deleting...' : 'Delete Timesheet'}
-                      </Button>
-                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-                    {canApprove && (
-                      <div className="pt-3 border-t space-y-2">
+            {/* Admin Actions - Delete (for admins only, all statuses) */}
+            {canDelete && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Admin Actions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    variant="destructive"
+                    onClick={handleDelete}
+                    disabled={isSubmitting}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {isSubmitting ? 'Deleting...' : 'Delete Timesheet'}
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Actions - Show for Submitted/UnderReview timesheets (for approvers) */}
+            {(timesheet?.status === 'Submitted' || timesheet?.status === 'UnderReview') && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Approval Actions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col gap-3">
+                    {canApproveAction && hasApprovePermission ? (
+                      <>
                         <Button
                           variant="default"
                           onClick={() => openAction('approve')}
-                          disabled={!workflowInstanceId}
+                          disabled={(!workflowInstanceId && !timesheet.workflow_instance_id) || isActioning}
+                          title={(!workflowInstanceId && !timesheet.workflow_instance_id) ? 'Loading workflow instance...' : undefined}
                         >
                           Approve
                         </Button>
                         <Button
                           variant="destructive"
                           onClick={() => openAction('decline')}
-                          disabled={!workflowInstanceId}
+                          disabled={(!workflowInstanceId && !timesheet.workflow_instance_id) || isActioning}
+                          title={(!workflowInstanceId && !timesheet.workflow_instance_id) ? 'Loading workflow instance...' : undefined}
                         >
                           Final Decline
                         </Button>
                         <Button
                           variant="outline"
                           onClick={() => openAction('reroute')}
-                          disabled={!workflowInstanceId || !workflowTimeline?.timeline?.length}
+                          disabled={(!workflowInstanceId && !timesheet.workflow_instance_id) || !workflowTimeline?.timeline?.length || isActioning}
+                          title={(!workflowInstanceId && !timesheet.workflow_instance_id) ? 'Loading workflow instance...' : undefined}
                         >
                           Decline & Route Back
                         </Button>
-                      </div>
+                        {!workflowInstanceId && !timesheet.workflow_instance_id && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                            ⚠️ No workflow instance found. This timesheet may need to be resubmitted.
+                          </p>
+                        )}
+                        {timesheet.workflow_instance_id && !workflowInstanceId && (
+                          <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                            ℹ️ Workflow instance found. Loading details...
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        You do not have permission to approve this timesheet.
+                      </p>
                     )}
-                  </div>
-
-                  {canApprove && actionMode && (
-                    <div className="mt-4 border-t pt-4 space-y-3">
+                    
+                    {canApprove && actionMode && (
+                      <div className="mt-4 border-t pt-4 space-y-3">
                       <p className="text-sm font-medium">
                         {actionMode === 'approve'
                           ? 'Approve current step'
@@ -702,7 +851,8 @@ export default function TimesheetDetailPage() {
                         </Button>
                       </div>
                     </div>
-                  )}
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             )}

@@ -137,6 +137,10 @@ export async function DELETE(
       console.error('[Role Permission] Failed to cleanup scopes:', cleanupError.message);
     }
 
+    // OPTIMIZED: Invalidate permission cache for all users with this role
+    const { invalidateRolePermissionCache } = await import('@/lib/utils/cache-invalidation');
+    await invalidateRolePermissionCache(params.id);
+
     // Return updated role
     const updatedRole = await prisma.role.findUnique({
       where: { id: params.id },

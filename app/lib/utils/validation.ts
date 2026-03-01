@@ -178,7 +178,7 @@ export const createLeaveRequestSchema = z.object({
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
   reason: z.string().optional(),
-  location_id: z.string().uuid(),
+  location_id: z.string().uuid().optional(), // ENHANCED: Make optional - will use user's primary location if not provided
 }).refine(
   (data) => {
     const start = new Date(data.start_date);
@@ -359,6 +359,64 @@ export const adjustLeaveBalanceSchema = z.object({
   days: z.number(), // Positive = add, Negative = subtract
   reason: z.string().min(1).max(1000),
 });
+
+export const bulkResetLeaveBalanceSchema = z.object({
+  user_ids: z.array(z.string().uuid()).optional(),
+  role_ids: z.array(z.string().uuid()).optional(),
+  category_ids: z.array(z.string().uuid()).optional(),
+  staff_type_ids: z.array(z.string().uuid()).optional(),
+  leave_type_id: z.string().uuid().nullable().optional(),
+  reason: z.string().min(1).max(1000),
+}).refine(
+  (data) => data.user_ids?.length || data.role_ids?.length || data.category_ids?.length || data.staff_type_ids?.length,
+  { message: 'At least one filter (user_ids, role_ids, category_ids, or staff_type_ids) must be provided' }
+);
+
+export const bulkAllocateLeaveBalanceSchema = z.object({
+  user_ids: z.array(z.string().uuid()).optional(),
+  role_ids: z.array(z.string().uuid()).optional(),
+  staff_type_ids: z.array(z.string().uuid()).optional(),
+  leave_type_id: z.string().uuid(),
+  year: z.number().int().min(2000).max(3000),
+  days: z.number().positive(),
+}).refine(
+  (data) => data.user_ids?.length || data.role_ids?.length || data.staff_type_ids?.length,
+  { message: 'At least one filter (user_ids, role_ids, or staff_type_ids) must be provided' }
+);
+
+export const contractWithLeaveAllocationSchema = z.object({
+  contract_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  contract_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').nullable().optional(),
+  auto_calculate_leave: z.boolean().default(false),
+  leave_type_id: z.string().uuid().optional(), // Required if auto_calculate_leave is true
+  manual_leave_days: z.number().positive().optional(), // Required if auto_calculate_leave is false
+});
+
+export const bulkAssignContractsSchema = z.object({
+  user_ids: z.array(z.string().uuid()).optional(),
+  role_ids: z.array(z.string().uuid()).optional(),
+  category_ids: z.array(z.string().uuid()).optional(),
+  staff_type_ids: z.array(z.string().uuid()).optional(),
+  contract_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
+  contract_end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').nullable().optional(),
+  auto_calculate_leave: z.boolean().optional(),
+  leave_type_id: z.string().uuid().optional(),
+  manual_leave_days: z.number().positive().optional(),
+}).refine(
+  (data) => data.user_ids?.length || data.role_ids?.length || data.category_ids?.length || data.staff_type_ids?.length,
+  { message: 'At least one filter (user_ids, role_ids, category_ids, or staff_type_ids) must be provided' }
+).refine(
+  (data) => {
+    if (data.auto_calculate_leave === true) {
+      return !!data.leave_type_id;
+    }
+    if (data.auto_calculate_leave === false) {
+      return !!data.leave_type_id && !!data.manual_leave_days;
+    }
+    return true; // If auto_calculate_leave is undefined/null, no leave allocation
+  },
+  { message: 'If auto_calculate_leave is true, leave_type_id is required. If false, both leave_type_id and manual_leave_days are required.' }
+);
 
 /**
  * Contract management schemas

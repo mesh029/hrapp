@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Calendar, FileText } from 'lucide-react';
+import { Plus, Search, Calendar, FileText, Trash2, CheckSquare, Square } from 'lucide-react';
+import { usePermissions } from '@/ui/src/hooks/use-permissions';
 import { timesheetService, Timesheet } from '@/ui/src/services/timesheets';
 import { useComponentVisibility } from '@/ui/src/hooks/use-component-visibility';
 import { useDynamicUI } from '@/ui/src/hooks/use-dynamic-ui';
@@ -29,16 +30,21 @@ export default function TimesheetsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { features, isLoading: uiLoading } = useDynamicUI();
+  const { hasPermission } = usePermissions();
   const [timesheets, setTimesheets] = React.useState<Timesheet[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<string>('all');
+  const [selectedTimesheets, setSelectedTimesheets] = React.useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = React.useState(false);
   const [pagination, setPagination] = React.useState({
     page: 1,
     limit: 20,
     total: 0,
     totalPages: 0,
   });
+
+  const canDelete = features.isAdmin || hasPermission('timesheet.delete') || hasPermission('system.admin');
 
   const { isVisible: canView } = useComponentVisibility(COMPONENT_ID_LIST, {
     fallbackPermission: 'timesheet.read',
@@ -102,6 +108,57 @@ export default function TimesheetsPage() {
 
   const formatDateRange = (start: string, end: string) => {
     return `${formatDate(start)} - ${formatDate(end)}`;
+  };
+
+  const handleSelectAll = () => {
+    if (selectedTimesheets.size === timesheets.length) {
+      setSelectedTimesheets(new Set());
+    } else {
+      setSelectedTimesheets(new Set(timesheets.map(t => t.id)));
+    }
+  };
+
+  const handleSelectTimesheet = (id: string) => {
+    const newSelected = new Set(selectedTimesheets);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedTimesheets(newSelected);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedTimesheets.size === 0) {
+      alert('Please select at least one timesheet to delete');
+      return;
+    }
+
+    const confirmMessage = `⚠️ WARNING: Are you sure you want to delete ${selectedTimesheets.size} timesheet(s)? This action cannot be undone.`;
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      const response = await timesheetService.bulkDeleteTimesheets(Array.from(selectedTimesheets));
+      if (response.success) {
+        const deletedCount = response.data?.deletedCount || selectedTimesheets.size;
+        setSelectedTimesheets(new Set());
+        // Wait a bit to ensure database transaction is committed
+        await new Promise(resolve => setTimeout(resolve, 500));
+        // Reload the list
+        await loadTimesheets();
+        alert(`Successfully deleted ${deletedCount} timesheet(s)`);
+      } else {
+        alert(response.message || 'Failed to delete timesheets');
+      }
+    } catch (error: any) {
+      console.error('Failed to bulk delete timesheets:', error);
+      alert(error.message || 'Failed to delete timesheets');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (!canView) {
@@ -182,9 +239,22 @@ export default function TimesheetsPage() {
         {/* Timesheets List */}
         <Card>
           <CardHeader>
-            <CardTitle>
-              {features.canViewAllTimesheets || features.canApproveTimesheet ? 'Team Timesheets' : 'My Timesheets'}
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>
+                {features.canViewAllTimesheets || features.canApproveTimesheet ? 'Team Timesheets' : 'My Timesheets'}
+              </CardTitle>
+              {canDelete && selectedTimesheets.size > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={isDeleting}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {isDeleting ? 'Deleting...' : `Delete ${selectedTimesheets.size} Selected`}
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -195,14 +265,51 @@ export default function TimesheetsPage() {
               </div>
             ) : (
               <div className="space-y-4">
+                {/* Select All Checkbox */}
+                {canDelete && (
+                  <div className="flex items-center gap-2 pb-2 border-b">
+                    <button
+                      type="button"
+                      onClick={handleSelectAll}
+                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      {selectedTimesheets.size === timesheets.length ? (
+                        <CheckSquare className="h-4 w-4" />
+                      ) : (
+                        <Square className="h-4 w-4" />
+                      )}
+                      <span>Select All ({selectedTimesheets.size}/{timesheets.length})</span>
+                    </button>
+                  </div>
+                )}
                 {timesheets.map((timesheet) => (
                   <div
                     key={timesheet.id}
-                    className="border rounded-lg p-4 hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => router.push(`/timesheets/${timesheet.id}`)}
+                    className={`border rounded-lg p-4 hover:bg-muted/50 transition-colors ${
+                      selectedTimesheets.has(timesheet.id) ? 'bg-muted border-primary' : ''
+                    }`}
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
+                    <div className="flex items-start justify-between gap-4">
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectTimesheet(timesheet.id);
+                          }}
+                          className="mt-1"
+                        >
+                          {selectedTimesheets.has(timesheet.id) ? (
+                            <CheckSquare className="h-5 w-5 text-primary" />
+                          ) : (
+                            <Square className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </button>
+                      )}
+                      <div
+                        className="flex-1 cursor-pointer"
+                        onClick={() => router.push(`/timesheets/${timesheet.id}`)}
+                      >
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="font-semibold">
                             {features.canViewAllTimesheets && timesheet.user

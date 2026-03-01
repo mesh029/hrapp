@@ -91,6 +91,11 @@ export default function DashboardPage() {
     expiringContracts: 0,
     expiredContracts: 0,
     utilizedDaysForExpiredUsers: 0,
+    // ENHANCED: Month-based analytics
+    leaveAnalyticsMonth: null as any,
+    timesheetAnalyticsMonth: null as any,
+    contractHealth: null as any,
+    balanceHealth: null as any,
   });
   const [isLoading, setIsLoading] = React.useState(true);
   const [locations, setLocations] = React.useState<Array<{ id: string; name: string }>>([]);
@@ -200,6 +205,11 @@ export default function DashboardPage() {
         expiringContracts: data?.contracts?.expiringIn30Days || 0,
         expiredContracts: data?.contracts?.expiredContracts || 0,
         utilizedDaysForExpiredUsers: Math.ceil(data?.contracts?.utilizedDaysForExpiredUsers || 0),
+        // ENHANCED: Month-based analytics
+        leaveAnalyticsMonth: data?.leave?.analyticsMonth || null,
+        timesheetAnalyticsMonth: data?.timesheets?.analyticsMonth || null,
+        contractHealth: data?.contracts || null,
+        balanceHealth: data?.leave?.balances || null,
       }));
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
@@ -524,91 +534,267 @@ export default function DashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader>
-                <CardTitle>Leave Analytics</CardTitle>
+                <CardTitle>
+                  Leave Analytics
+                  {stats.leaveAnalyticsMonth && (
+                    <span className="text-xs font-normal text-muted-foreground ml-2">
+                      ({new Date().toLocaleString('default', { month: 'long' })} {stats.leaveAnalyticsMonth.month.year})
+                    </span>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Approved days</span>
-                  <span className="font-medium">{displayStat(stats.approvedLeaveDays)}</span>
-                </div>
-                <div className="h-2 rounded bg-muted overflow-hidden">
-                  <div className="h-full bg-emerald-500" style={{ width: `${percent(stats.approvedLeaveDays, stats.totalLeaveDays)}%` }} />
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Pending days</span>
-                  <span className="font-medium">{displayStat(stats.pendingLeaveDays)}</span>
-                </div>
-                <div className="h-2 rounded bg-muted overflow-hidden">
-                  <div className="h-full bg-amber-500" style={{ width: `${percent(stats.pendingLeaveDays, stats.totalLeaveDays)}%` }} />
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Declined days</span>
-                  <span className="font-medium">{displayStat(stats.declinedLeaveDays)}</span>
-                </div>
-                <div className="h-2 rounded bg-muted overflow-hidden">
-                  <div className="h-full bg-red-500" style={{ width: `${percent(stats.declinedLeaveDays, stats.totalLeaveDays)}%` }} />
-                </div>
+                {stats.leaveAnalyticsMonth ? (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Submitted this month</span>
+                      <span className="font-medium">
+                        {stats.leaveAnalyticsMonth.submitted.count} requests ({stats.leaveAnalyticsMonth.submitted.days} days)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Pending approval</span>
+                      <span className="font-medium">
+                        {stats.leaveAnalyticsMonth.pending.count} ({stats.leaveAnalyticsMonth.pending.days} days)
+                      </span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-amber-500" style={{ width: `${stats.leaveAnalyticsMonth.pending.percentage}%` }} />
+                    </div>
+                    <div className="text-xs text-muted-foreground text-right">
+                      {stats.leaveAnalyticsMonth.pending.percentage}% pending
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Approved this month</span>
+                      <span className="font-medium">
+                        {stats.leaveAnalyticsMonth.approved.count} ({stats.leaveAnalyticsMonth.approved.days} days)
+                      </span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-emerald-500" style={{ width: `${stats.leaveAnalyticsMonth.approved.percentage}%` }} />
+                    </div>
+                    <div className="text-xs text-muted-foreground text-right">
+                      {stats.leaveAnalyticsMonth.approved.percentage}% approval rate
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Declined this month</span>
+                      <span className="font-medium">
+                        {stats.leaveAnalyticsMonth.declined.count} ({stats.leaveAnalyticsMonth.declined.days} days)
+                      </span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-red-500" style={{ width: `${stats.leaveAnalyticsMonth.declined.percentage}%` }} />
+                    </div>
+                    <div className="text-xs text-muted-foreground text-right">
+                      {stats.leaveAnalyticsMonth.declined.percentage}% decline rate
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Approved days</span>
+                      <span className="font-medium">{displayStat(stats.approvedLeaveDays)}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-emerald-500" style={{ width: `${percent(stats.approvedLeaveDays, stats.totalLeaveDays)}%` }} />
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Pending days</span>
+                      <span className="font-medium">{displayStat(stats.pendingLeaveDays)}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-amber-500" style={{ width: `${percent(stats.pendingLeaveDays, stats.totalLeaveDays)}%` }} />
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Declined days</span>
+                      <span className="font-medium">{displayStat(stats.declinedLeaveDays)}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-red-500" style={{ width: `${percent(stats.declinedLeaveDays, stats.totalLeaveDays)}%` }} />
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Timesheet Analytics</CardTitle>
+                <CardTitle>
+                  Timesheet Analytics
+                  {stats.timesheetAnalyticsMonth && (
+                    <span className="text-xs font-normal text-muted-foreground ml-2">
+                      ({new Date().toLocaleString('default', { month: 'long' })} {stats.timesheetAnalyticsMonth.month.year})
+                    </span>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Approved</span>
-                  <span className="font-medium">{displayStat(stats.approvedTimesheets)}</span>
-                </div>
-                <div className="h-2 rounded bg-muted overflow-hidden">
-                  <div className="h-full bg-blue-500" style={{ width: `${percent(stats.approvedTimesheets, stats.totalTimesheets)}%` }} />
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Pending</span>
-                  <span className="font-medium">{displayStat(stats.pendingTimesheets)}</span>
-                </div>
-                <div className="h-2 rounded bg-muted overflow-hidden">
-                  <div className="h-full bg-purple-500" style={{ width: `${percent(stats.pendingTimesheets, stats.totalTimesheets)}%` }} />
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Declined</span>
-                  <span className="font-medium">{displayStat(stats.declinedTimesheets)}</span>
-                </div>
-                <div className="h-2 rounded bg-muted overflow-hidden">
-                  <div className="h-full bg-rose-500" style={{ width: `${percent(stats.declinedTimesheets, stats.totalTimesheets)}%` }} />
-                </div>
+                {stats.timesheetAnalyticsMonth ? (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Submitted this month</span>
+                      <span className="font-medium">{stats.timesheetAnalyticsMonth.submitted.count} timesheets</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Pending approval</span>
+                      <span className="font-medium">{stats.timesheetAnalyticsMonth.pending.count}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-amber-500" style={{ width: `${stats.timesheetAnalyticsMonth.pending.percentage}%` }} />
+                    </div>
+                    <div className="text-xs text-muted-foreground text-right">
+                      {stats.timesheetAnalyticsMonth.pending.percentage}% pending
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Approved this month</span>
+                      <span className="font-medium">{stats.timesheetAnalyticsMonth.approved.count}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-emerald-500" style={{ width: `${stats.timesheetAnalyticsMonth.approved.percentage}%` }} />
+                    </div>
+                    <div className="text-xs text-muted-foreground text-right">
+                      {stats.timesheetAnalyticsMonth.approved.percentage}% approval rate
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Declined this month</span>
+                      <span className="font-medium">{stats.timesheetAnalyticsMonth.declined.count}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-red-500" style={{ width: `${stats.timesheetAnalyticsMonth.declined.percentage}%` }} />
+                    </div>
+                    <div className="text-xs text-muted-foreground text-right">
+                      {stats.timesheetAnalyticsMonth.declined.percentage}% decline rate
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Approved</span>
+                      <span className="font-medium">{displayStat(stats.approvedTimesheets)}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-blue-500" style={{ width: `${percent(stats.approvedTimesheets, stats.totalTimesheets)}%` }} />
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Pending</span>
+                      <span className="font-medium">{displayStat(stats.pendingTimesheets)}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-purple-500" style={{ width: `${percent(stats.pendingTimesheets, stats.totalTimesheets)}%` }} />
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Declined</span>
+                      <span className="font-medium">{displayStat(stats.declinedTimesheets)}</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-rose-500" style={{ width: `${percent(stats.declinedTimesheets, stats.totalTimesheets)}%` }} />
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
                 <CardTitle>Contract & Balance Health</CardTitle>
+                {stats.contractHealth && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Population: {stats.contractHealth.totalEmployees} employees
+                  </p>
+                )}
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Contracts expiring in 30 days</span>
-                  <span className="font-medium">{displayStat(stats.expiringContracts)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Expired contracts</span>
-                  <span className="font-medium">{displayStat(stats.expiredContracts)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Allocated leave days</span>
-                  <span className="font-medium">{displayStat(stats.totalAllocatedLeaveDays)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Used leave days</span>
-                  <span className="font-medium">{displayStat(stats.totalUsedLeaveDays)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Available leave days</span>
-                  <span className="font-medium">{displayStat(stats.totalAvailableLeaveDays)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Utilized days (expired contracts)</span>
-                  <span className="font-medium">{displayStat(stats.utilizedDaysForExpiredUsers)}</span>
-                </div>
+              <CardContent className="space-y-3 text-sm">
+                {stats.contractHealth && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Total employees</span>
+                      <span className="font-medium">{stats.contractHealth.totalEmployees}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Active contracts</span>
+                      <span className="font-medium">
+                        {stats.contractHealth.activeContracts} ({stats.contractHealth.activePercentage}%)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Expiring in 30 days</span>
+                      <span className="font-medium">
+                        {stats.contractHealth.expiringIn30Days} ({stats.contractHealth.expiringPercentage}%)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Expired contracts</span>
+                      <span className="font-medium">
+                        {stats.contractHealth.expiredContracts} ({stats.contractHealth.expiredPercentage}%)
+                      </span>
+                    </div>
+                    <div className="border-t pt-2 mt-2">
+                      <div className="flex items-center justify-between font-medium mb-1">
+                        <span>Leave Balance (Population)</span>
+                      </div>
+                      {stats.balanceHealth && (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Total allocated</span>
+                            <span className="font-medium">{Math.ceil(stats.balanceHealth.totalAllocated || 0)} days</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Total used</span>
+                            <span className="font-medium">{Math.ceil(stats.balanceHealth.totalUsed || 0)} days</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">Total available</span>
+                            <span className="font-medium">{Math.ceil(stats.balanceHealth.totalAvailable || 0)} days</span>
+                          </div>
+                          {stats.balanceHealth.utilizationRate !== undefined && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Utilization rate</span>
+                              <span className="font-medium">{stats.balanceHealth.utilizationRate}%</span>
+                            </div>
+                          )}
+                          {stats.balanceHealth.averageDaysPerEmployee !== undefined && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Avg days per employee</span>
+                              <span className="font-medium">{stats.balanceHealth.averageDaysPerEmployee.toFixed(1)}</span>
+                            </div>
+                          )}
+                          {stats.balanceHealth.employeesWithLowBalance !== undefined && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Low balance (&lt;5 days)</span>
+                              <span className="font-medium">
+                                {stats.balanceHealth.employeesWithLowBalance} ({stats.balanceHealth.lowBalancePercentage}%)
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+                {!stats.contractHealth && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Contracts expiring in 30 days</span>
+                      <span className="font-medium">{displayStat(stats.expiringContracts)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Expired contracts</span>
+                      <span className="font-medium">{displayStat(stats.expiredContracts)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Allocated leave days</span>
+                      <span className="font-medium">{displayStat(stats.totalAllocatedLeaveDays)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Used leave days</span>
+                      <span className="font-medium">{displayStat(stats.totalUsedLeaveDays)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Available leave days</span>
+                      <span className="font-medium">{displayStat(stats.totalAvailableLeaveDays)}</span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -82,6 +82,12 @@ export function useDynamicUI() {
         icon: null,
         requiredPermissions: [], // Everyone can see their profile
       },
+      {
+        href: '/employees/overview',
+        label: 'My Overview',
+        icon: null,
+        requiredPermissions: [], // Everyone can see their overview
+      },
     ];
 
     return items.filter(item => {

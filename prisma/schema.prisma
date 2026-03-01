@@ -109,8 +109,8 @@ model User {
   email               String     @unique
   password_hash       String
   status              UserStatus @default(active)
-  primary_location_id String?
-  primary_location    Location?  @relation("UserPrimaryLocation", fields: [primary_location_id], references: [id])
+  primary_location_id String
+  primary_location    Location   @relation("UserPrimaryLocation", fields: [primary_location_id], references: [id])
   manager_id          String? // Optional manager relationship
   manager             User?      @relation("UserManager", fields: [manager_id], references: [id])
   direct_reports      User[]     @relation("UserManager")

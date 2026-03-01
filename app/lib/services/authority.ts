@@ -32,50 +32,74 @@ export async function checkAuthority(params: AuthorityCheckParams): Promise<{
   }
 
   // 1.5. Check for system.admin permission (bypasses all other checks)
-  const userRoles = await prisma.userRole.findMany({
-    where: {
-      user_id: userId,
-      deleted_at: null,
-      role: {
-        status: 'active',
+  // OPTIMIZED: Cache full user permission set (location-agnostic) for 3 hours
+  // This avoids querying roles on every permission check
+  const userPermsCacheKey = `user:perms:${userId}`;
+  let rolePermissions: Set<string>;
+  
+  const cachedUserPerms = await redis.get(userPermsCacheKey);
+  if (cachedUserPerms) {
+    rolePermissions = new Set(JSON.parse(cachedUserPerms));
+  } else {
+    // OPTIMIZED: Use select instead of include to reduce data transfer
+    const userRoles = await prisma.userRole.findMany({
+      where: {
+        user_id: userId,
+        deleted_at: null,
+        role: {
+          status: 'active',
+        },
       },
-    },
-    include: {
-      role: {
-        include: {
-          role_permissions: {
-            include: {
-              permission: true,
+      select: {
+        role: {
+          select: {
+            status: true,
+            role_permissions: {
+              select: {
+                permission: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  const rolePermissions = new Set<string>();
-  userRoles.forEach((ur) => {
-    if (ur.role && ur.role.status === 'active') {
-      ur.role.role_permissions.forEach((rp) => {
-        rolePermissions.add(rp.permission.name);
-      });
-    }
-  });
+    rolePermissions = new Set<string>();
+    userRoles.forEach((ur) => {
+      if (ur.role && ur.role.status === 'active') {
+        ur.role.role_permissions.forEach((rp) => {
+          rolePermissions.add(rp.permission.name);
+        });
+      }
+    });
+
+    // Cache full permission set for 3 hours (10800 seconds)
+    await redis.setex(userPermsCacheKey, 10800, JSON.stringify(Array.from(rolePermissions)));
+  }
 
   if (rolePermissions.has('system.admin')) {
     return { authorized: true, source: 'direct' };
   }
 
   // 2. Check workflow step eligibility (if workflow context provided)
+  // OPTIMIZED: Use select to only fetch needed fields
   if (workflowInstanceId && workflowStepOrder !== undefined) {
     const workflowInstance = await prisma.workflowInstance.findUnique({
       where: { id: workflowInstanceId },
-      include: {
+      select: {
+        current_step_order: true,
         template: {
-          include: {
+          select: {
             steps: {
               where: { step_order: workflowStepOrder },
               take: 1,
+              select: {
+                required_permission: true,
+              },
             },
           },
         },
@@ -147,6 +171,7 @@ export async function checkAuthority(params: AuthorityCheckParams): Promise<{
   }
 
   // 7. Get active scopes for permission
+  // OPTIMIZED: Use select to only fetch needed fields
   const now = new Date();
   const scopes = await prisma.userPermissionScope.findMany({
     where: {
@@ -160,6 +185,12 @@ export async function checkAuthority(params: AuthorityCheckParams): Promise<{
         { valid_until: null },
         { valid_until: { gte: now } },
       ],
+    },
+    select: {
+      id: true,
+      location_id: true,
+      is_global: true,
+      include_descendants: true,
     },
   });
 
@@ -201,6 +232,7 @@ async function checkDelegationAuthority(
   source: 'direct' | 'delegation' | null;
   delegationId?: string;
 }> {
+  // OPTIMIZED: Use select to only fetch needed fields
   const now = new Date();
   const delegations = await prisma.delegation.findMany({
     where: {
@@ -211,6 +243,11 @@ async function checkDelegationAuthority(
       status: 'active',
       valid_from: { lte: now },
       valid_until: { gte: now },
+    },
+    select: {
+      id: true,
+      location_id: true,
+      include_descendants: true,
     },
   });
 

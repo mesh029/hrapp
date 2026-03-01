@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticate } from '@/lib/middleware/auth';
 import { requirePermission } from '@/lib/middleware/permissions';
 import { prisma } from '@/lib/db';
+import { redis } from '@/lib/redis';
 import { successResponse, errorResponse, unauthorizedResponse } from '@/lib/utils/responses';
 import { createStaffTypeSchema, paginationSchema } from '@/lib/utils/validation';
 
@@ -74,6 +75,14 @@ export async function GET(request: NextRequest) {
       ];
     }
 
+    // OPTIMIZED: Cache staff types (read-only, relatively static data)
+    const cacheKey = `staff_types:${JSON.stringify({ status, search, page, limit })}`;
+    const cached = await redis.get(cacheKey);
+    
+    if (cached) {
+      return successResponse(JSON.parse(cached));
+    }
+
     // Get staff types
     const [staffTypes, total] = await Promise.all([
       prisma.staffType.findMany({
@@ -92,7 +101,7 @@ export async function GET(request: NextRequest) {
       prisma.staffType.count({ where }),
     ]);
 
-    return successResponse({
+    const response = {
       staffTypes,
       pagination: {
         page,
@@ -100,7 +109,12 @@ export async function GET(request: NextRequest) {
         total,
         totalPages: Math.ceil(total / limit),
       },
-    });
+    };
+
+    // Cache for 5 minutes (staff types are relatively static)
+    await redis.setex(cacheKey, 300, JSON.stringify(response));
+
+    return successResponse(response);
   } catch (error: any) {
     console.error('List staff types error:', error);
     if (error.message.includes('Unauthorized')) {
@@ -179,6 +193,12 @@ export async function POST(request: NextRequest) {
         metadata: validation.data.metadata || {},
       },
     });
+
+    // OPTIMIZED: Invalidate staff types cache when data changes
+    const keys = await redis.keys('staff_types:*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
 
     return successResponse(staffType, undefined, 201);
   } catch (error: any) {

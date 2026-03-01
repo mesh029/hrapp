@@ -61,7 +61,7 @@ export async function GET(
     // Also check if workflow_instance_id is stored on the leave request
     const leaveRequestWithWorkflow = await prisma.leaveRequest.findUnique({
       where: { id: params.id },
-      select: { workflow_instance_id: true },
+      select: { workflow_instance_id: true, location_id: true },
     });
 
     let workflowInstance = null;
@@ -157,29 +157,57 @@ export async function GET(
       });
     }
 
-    // Build timeline
-    const timeline = workflowInstance.template.steps.map((step, index) => {
-      const stepInstance = workflowInstance.steps.find(s => s.step_order === step.step_order);
-      const isCurrent = workflowInstance.current_step_order === step.step_order;
-      const isCompleted = stepInstance?.status === 'approved' || stepInstance?.status === 'declined';
-      const isPending = stepInstance?.status === 'pending' && isCurrent;
-      const isUpcoming = !stepInstance || (!isCompleted && !isPending);
+    // Get location for approver resolution
+    const locationId = leaveRequestWithWorkflow?.location_id || '';
 
-      return {
-        step_order: step.step_order,
-        required_permission: step.required_permission,
-        allow_decline: step.allow_decline,
-        allow_adjust: step.allow_adjust,
-        status: stepInstance?.status || 'pending',
-        actor: stepInstance?.actor || null,
-        acted_at: stepInstance?.acted_at || null,
-        comment: stepInstance?.comment || null,
-        is_current: isCurrent,
-        is_completed: isCompleted,
-        is_pending: isPending,
-        is_upcoming: isUpcoming,
-      };
-    });
+    // Build timeline with approver information
+    const timeline = await Promise.all(
+      workflowInstance.template.steps.map(async (step, index) => {
+        const stepInstance = workflowInstance.steps.find(s => s.step_order === step.step_order);
+        const isCurrent = workflowInstance.current_step_order === step.step_order;
+        const isCompleted = stepInstance?.status === 'approved' || stepInstance?.status === 'declined';
+        const isPending = stepInstance?.status === 'pending' && isCurrent;
+        const isUpcoming = !stepInstance || (!isCompleted && !isPending);
+
+        // Resolve approvers for pending/current step
+        let assignedApprovers: Array<{ id: string; name: string; email: string }> = [];
+        if (isPending && locationId) {
+          try {
+            const { resolveApprovers } = await import('@/lib/services/workflow');
+            const approverIds = await resolveApprovers(step.step_order, workflowInstance.id, locationId, {
+              stepConfig: step,
+            });
+            
+            // Fetch approver details
+            if (approverIds.length > 0) {
+              const approvers = await prisma.user.findMany({
+                where: { id: { in: approverIds } },
+                select: { id: true, name: true, email: true },
+              });
+              assignedApprovers = approvers;
+            }
+          } catch (error) {
+            console.error(`Failed to resolve approvers for step ${step.step_order}:`, error);
+          }
+        }
+
+        return {
+          step_order: step.step_order,
+          required_permission: step.required_permission,
+          allow_decline: step.allow_decline,
+          allow_adjust: step.allow_adjust,
+          status: stepInstance?.status || 'pending',
+          actor: stepInstance?.actor || null,
+          acted_at: stepInstance?.acted_at || null,
+          comment: stepInstance?.comment || null,
+          is_current: isCurrent,
+          is_completed: isCompleted,
+          is_pending: isPending,
+          is_upcoming: isUpcoming,
+          assigned_approvers: assignedApprovers,
+        };
+      })
+    );
 
     return successResponse({
       has_workflow: true,

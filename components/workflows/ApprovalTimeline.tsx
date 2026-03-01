@@ -22,6 +22,7 @@ export interface TimelineStep {
   is_completed: boolean;
   is_pending: boolean;
   is_upcoming: boolean;
+  assigned_approvers?: Array<{ id: string; name: string; email: string }>;
 }
 
 export interface ApprovalTimelineProps {
@@ -137,8 +138,29 @@ export function ApprovalTimeline({ timeline, workflowStatus, templateName, class
                     {getStatusBadge(step)}
                   </div>
 
-                  {/* Actor Info */}
-                  {step.actor && (
+                  {/* Assigned Approvers (for pending steps) */}
+                  {step.is_pending && step.assigned_approvers && step.assigned_approvers.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Clock className="h-4 w-4" />
+                        <span className="font-medium">Awaiting approval from:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 ml-6">
+                        {step.assigned_approvers.map((approver) => (
+                          <div
+                            key={approver.id}
+                            className="flex items-center gap-1 px-2 py-1 bg-blue-50 rounded-md text-sm"
+                          >
+                            <User className="h-3 w-3 text-blue-600" />
+                            <span className="font-medium text-blue-900">{approver.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actor Info (for completed steps) */}
+                  {step.actor && step.is_completed && (
                     <div className="flex items-center gap-2 text-sm">
                       <User className="h-4 w-4 text-muted-foreground" />
                       <span className="font-medium">{step.actor.name}</span>

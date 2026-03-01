@@ -18,27 +18,8 @@ export async function requirePermission(
 ): Promise<void> {
   const { locationId, workflowStepOrder, workflowInstanceId } = options;
 
-  // Check if user has system.admin permission (bypasses location checks)
-  const hasSystemAdmin = await prisma.userRole.findFirst({
-    where: {
-      user_id: user.id,
-      deleted_at: null,
-      role: {
-        status: 'active',
-        role_permissions: {
-          some: {
-            permission: {
-              name: 'system.admin',
-            },
-          },
-        },
-      },
-    },
-  });
-
-  if (hasSystemAdmin) {
-    return; // System admin has all permissions
-  }
+  // OPTIMIZED: Removed duplicate system.admin check - checkAuthority already handles it
+  // This eliminates one unnecessary database query per permission check
 
   // If location is required but not provided, throw error
   if (!locationId) {

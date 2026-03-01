@@ -55,7 +55,7 @@ class ApiClient {
     const { skipAuth = false, ...fetchOptions } = options;
     
     // Determine if this is a Next.js API route or Docker API route
-    // Next.js API routes: /api/workflows, /api/leave, /api/timesheets, /api/users, /api/admin, /api/delegations
+    // Next.js API routes: /api/workflows, /api/leave, /api/timesheets, /api/users, /api/admin, /api/delegations, /api/employees
     // Docker API routes: everything else
     const isNextJsRoute = endpoint.startsWith('/api/workflows') ||
                          endpoint.startsWith('/api/leave') ||
@@ -65,7 +65,8 @@ class ApiClient {
                          endpoint.startsWith('/api/delegations') ||
                          endpoint.startsWith('/api/notifications') ||
                          endpoint.startsWith('/api/auth') ||
-                         endpoint.startsWith('/api/reports');
+                         endpoint.startsWith('/api/reports') ||
+                         endpoint.startsWith('/api/employees');
     
     let url: string;
     if (API_BASE_URL && !isNextJsRoute) {
