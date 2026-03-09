@@ -50,27 +50,53 @@ export default function WorkflowTemplatesPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
+      const templateParams: any = {
+        limit: 200,
+      };
+      
+      if (filterResourceType !== 'all') {
+        templateParams.resource_type = filterResourceType as 'leave' | 'timesheet';
+      }
+      if (filterLocation !== 'all') {
+        templateParams.location_id = filterLocation;
+      }
+      if (filterStatus !== 'all') {
+        templateParams.status = filterStatus as 'active' | 'deprecated';
+      } else {
+        // Default to active if no filter is set
+        templateParams.status = 'active';
+      }
+      if (searchTerm) {
+        templateParams.search = searchTerm;
+      }
+      
+      console.log('🔄 Loading templates with params:', templateParams);
+      
       const [templatesRes, locationsRes] = await Promise.all([
-        workflowService.getTemplates({
-          resource_type: filterResourceType !== 'all' ? filterResourceType as 'leave' | 'timesheet' : undefined,
-          location_id: filterLocation !== 'all' ? filterLocation : undefined,
-          status: filterStatus !== 'all' ? filterStatus as 'active' | 'deprecated' : undefined,
-          search: searchTerm || undefined,
-        }),
+        workflowService.getTemplates(templateParams),
         locationsService.getLocations(),
       ]);
 
-      if (templatesRes.success) {
-        setTemplates(templatesRes.data.templates || []);
+      console.log('📋 Templates API response:', templatesRes);
+      
+      if (templatesRes && templatesRes.success && templatesRes.data) {
+        const templatesData = templatesRes.data.templates || templatesRes.data || [];
+        console.log(`✅ Loaded ${templatesData.length} template(s):`, templatesData);
+        setTemplates(Array.isArray(templatesData) ? templatesData : []);
+      } else {
+        console.error('❌ Failed to load templates - response:', templatesRes);
+        setTemplates([]);
       }
-      if (locationsRes.success) {
+      
+      if (locationsRes && locationsRes.success && locationsRes.data) {
         // API returns { locations: [...], tree: [...], flat: [...] }
         const locationsData = locationsRes.data as any;
         const locs = locationsData.locations || locationsData.flat || locationsData.tree || [];
         setLocations(Array.isArray(locs) ? locs : []);
       }
-    } catch (error) {
-      console.error('Failed to load data:', error);
+    } catch (error: any) {
+      console.error('❌ Error loading data:', error);
+      setTemplates([]);
     } finally {
       setIsLoading(false);
     }

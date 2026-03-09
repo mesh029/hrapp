@@ -51,20 +51,30 @@ export default function RolesPage() {
     try {
       setIsLoading(true);
       const [rolesRes, permissionsRes] = await Promise.all([
-        rolesService.getRoles(),
+        rolesService.getRoles({ limit: 200, status: 'active' }),
         permissionsService.getPermissions(),
       ]);
 
-      if (rolesRes.success && rolesRes.data) {
-        setRoles(rolesRes.data.roles || []);
+      console.log('📋 Roles API response:', rolesRes);
+      
+      if (rolesRes && rolesRes.success && rolesRes.data) {
+        const rolesData = rolesRes.data.roles || rolesRes.data || [];
+        console.log(`✅ Loaded ${rolesData.length} role(s):`, rolesData);
+        setRoles(Array.isArray(rolesData) ? rolesData : []);
+      } else {
+        console.error('❌ Failed to load roles - response:', rolesRes);
+        setRoles([]);
       }
-      if (permissionsRes.success && permissionsRes.data) {
+      
+      if (permissionsRes && permissionsRes.success && permissionsRes.data) {
         // API returns { permissions: [...], pagination: {...} }
         const permissionsData = permissionsRes.data as any;
         setPermissions(permissionsData.permissions || permissionsData || []);
       }
-    } catch (error) {
-      console.error('Failed to load data:', error);
+    } catch (error: any) {
+      console.error('❌ Error loading data:', error);
+      setError(`Failed to load data: ${error.message || 'Unknown error'}`);
+      setRoles([]);
     } finally {
       setIsLoading(false);
     }

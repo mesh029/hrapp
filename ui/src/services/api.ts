@@ -66,7 +66,10 @@ class ApiClient {
                          endpoint.startsWith('/api/notifications') ||
                          endpoint.startsWith('/api/auth') ||
                          endpoint.startsWith('/api/reports') ||
-                         endpoint.startsWith('/api/employees');
+                         endpoint.startsWith('/api/employees') ||
+                         endpoint.startsWith('/api/roles') ||
+                         endpoint.startsWith('/api/permissions') ||
+                         endpoint.startsWith('/api/locations');
     
     let url: string;
     if (API_BASE_URL && !isNextJsRoute) {
