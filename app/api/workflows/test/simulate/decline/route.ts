@@ -73,10 +73,31 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve approvers for this step
+    let required_roles = null;
+    let conditional_rules = null;
+    
+    try {
+      if (step.required_roles) {
+        required_roles = JSON.parse(step.required_roles as string);
+      }
+    } catch (e) {
+      console.error(`Invalid JSON in required_roles for step ${step.id}:`, step.required_roles);
+      required_roles = null;
+    }
+    
+    try {
+      if (step.conditional_rules) {
+        conditional_rules = JSON.parse(step.conditional_rules as string);
+      }
+    } catch (e) {
+      console.error(`Invalid JSON in conditional_rules for step ${step.id}:`, step.conditional_rules);
+      conditional_rules = null;
+    }
+    
     const stepConfig = {
       ...step,
-      required_roles: step.required_roles ? JSON.parse(step.required_roles as string) : null,
-      conditional_rules: step.conditional_rules ? JSON.parse(step.conditional_rules as string) : null,
+      required_roles,
+      conditional_rules,
     };
 
     const approverIds = await resolveApprovers(

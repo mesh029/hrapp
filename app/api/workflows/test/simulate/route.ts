@@ -91,15 +91,38 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse JSON fields in steps
-    const stepsWithParsed = template.steps.map(step => ({
-      ...step,
-      required_roles: step.required_roles ? JSON.parse(step.required_roles as string) : null,
-      conditional_rules: step.conditional_rules ? JSON.parse(step.conditional_rules as string) : null,
-      // Normalize location_scope: default to 'all' if null, undefined, or empty
-      location_scope: (step.location_scope && typeof step.location_scope === 'string' && step.location_scope.trim() !== '') 
-        ? step.location_scope 
-        : 'all',
-    }));
+    const stepsWithParsed = template.steps.map(step => {
+      let required_roles = null;
+      let conditional_rules = null;
+      
+      try {
+        if (step.required_roles) {
+          required_roles = JSON.parse(step.required_roles as string);
+        }
+      } catch (e) {
+        console.error(`Invalid JSON in required_roles for step ${step.id}:`, step.required_roles);
+        required_roles = null;
+      }
+      
+      try {
+        if (step.conditional_rules) {
+          conditional_rules = JSON.parse(step.conditional_rules as string);
+        }
+      } catch (e) {
+        console.error(`Invalid JSON in conditional_rules for step ${step.id}:`, step.conditional_rules);
+        conditional_rules = null;
+      }
+      
+      return {
+        ...step,
+        required_roles,
+        conditional_rules,
+        // Normalize location_scope: default to 'all' if null, undefined, or empty
+        location_scope: (step.location_scope && typeof step.location_scope === 'string' && step.location_scope.trim() !== '') 
+          ? step.location_scope 
+          : 'all',
+      };
+    });
 
     // Get the employee to create request for
     const employee = await prisma.user.findUnique({
